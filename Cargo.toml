@@ -1,0 +1,25 @@
+[package]
+name = "aquest"
+version = "1.0.0"
+edition = "2024"
+rust-version = "1.88"
+description = "AQuest: Mark Mackey's XQuest (1994) in the terminal, ported from xquest-sdl for the Asciiverse catalog"
+publish = false
+
+[[bin]]
+name = "aquest"
+path = "src/main.rs"
+
+[dependencies]
+ratatui = "0.30"
+log = "0.4"
+env_logger = "0.11"
+rodio = { version = "0.22", default-features = false, features = ["playback"] }
+gilrs = { version = "0.11", optional = true }
+
+[features]
+default = ["gamepad"]
+gamepad = ["dep:gilrs"]
+
+[profile.release]
+debug = 1

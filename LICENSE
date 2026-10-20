@@ -1,0 +1,45 @@
+AQuest - License
+================
+
+Original game
+-------------
+XQuest is Copyright (C) 1994, 1995, 1996 Mark Mackey. All rights reserved.
+
+The original XQuest game, its source code, graphics, sounds, levels, and all
+other assets were created by Mark Mackey and released as shareware. The
+original license (LICENSE.DOC in the xquest source tree) permits free
+distribution of the unmodified game and explicitly anticipated a future
+open source release of the source code.
+
+AQuest plays XQuest in a text terminal. It is built on xquest-sdl
+(github.com/sandbranch/xquest-sdl), David's port of XQuest v1.3 to C and
+SDL2, made with Mark Mackey's blessing, and it uses the original game's
+graphics, sounds and levels unchanged. It is an unofficial, non-commercial
+port, offered in the spirit of the original release: free to use and share,
+not for sale, with full credit to the original author.
+
+Conditions inherited from the original license
+-----------------------------------------------
+- This software may not be sold or bundled with commercial hardware or
+  software without the express written permission of Mark Mackey.
+- All distributions must retain this license and attribution to Mark Mackey
+  as the original author of XQuest.
+
+New code
+--------
+The code in this repository (the Rust source, build files and tools) is
+released under the same non-commercial, attribution terms as the original
+game and as xquest-sdl. You are free to study, modify, and redistribute it
+provided that:
+
+1. Mark Mackey is credited as the original author of XQuest.
+2. Any distribution makes clear this is an unofficial port and not an
+   original work of the distributor.
+3. No money is charged for the software beyond a reasonable media or
+   distribution fee (consistent with the original shareware terms).
+
+Disclaimer
+----------
+This software is provided as-is, without warranty of any kind. The authors of
+the port make no warranty as to its quality, performance, or fitness for any
+purpose, and shall have no liability for any damages arising from its use.
