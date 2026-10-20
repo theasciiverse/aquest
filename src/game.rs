@@ -28,6 +28,8 @@ const SHIP_START_X: i32 = 196;
 const SHIP_START_Y: i32 = 160;
 
 const MAX_SHIP_SPEED: i32 = 640;
+/// Ticks a second (Framerate in xqvars.pas).
+pub const FRAME_RATE: i64 = 67;
 /// Thrust a held direction key gives each tick.
 pub const KEYBOARD_STEP: i32 = 10;
 
@@ -74,16 +76,17 @@ const ENEMY_START_Y: i32 = 155;
 const MAX_MISSILES: usize = 50;
 const MISSILE_LIFE: i32 = 300;
 
-/// Speed per difficulty: Wimp, Timid, Average, Tricky, Inhuman.
-pub const DIFF_SPEED: [i32; 5] = [45, 54, 64, 77, 96];
 pub const DIFF_NAMES: [&str; 5] = ["Wimp", "Timid", "Average", "Tricky", "Inhuman"];
 
 // Sound numbers, as in xqvars.pas (1-based).
+pub const SND_PHEW: u8 = 3;
 pub const SND_FIRE4: u8 = 4;
 pub const SND_FIRE: u8 = 5;
 pub const SND_BOING: u8 = 6;
+pub const SND_WOOHOO: u8 = 8;
 pub const SND_GETCRYSTAL: u8 = 11;
 pub const SND_EXPLOSN: u8 = 12;
+pub const SND_COUNTDOWN: u8 = 17;
 pub const SND_GATESOUND: u8 = 18;
 pub const SND_ENEMYENT: u8 = 22;
 pub const SND_MENUCLICK: u8 = 23;
@@ -94,8 +97,8 @@ pub const BUT_FIRE: u8 = 1;
 pub const BUT_BOMB: u8 = 2;
 pub const BUT_FIRE_HELD: u8 = 4;
 
-/// One level, as in xqvars.pas. `newman`, `time` and `bonus_level` are kept
-/// as the table has them, but xquest-sdl reads none of them.
+/// One level, as in xqvars.pas. `bonus_level` is kept as the table has it;
+/// the original compiled bonus levels out ({$UNDEF BONUSLEVEL}).
 #[allow(dead_code)]
 pub struct Level {
     pub numcryst: i32,
@@ -216,8 +219,7 @@ const fn kind(
 }
 
 /// Speed factor, enemy frequency, and whether the ship bounces off walls.
-/// xquest-sdl reads only `enemyfrequency`: speed comes from `DIFF_SPEED`,
-/// and walls bounce on Wimp alone.
+/// `rebound` is not read: xquest-sdl bounces off walls on Wimp alone.
 #[allow(dead_code)]
 pub struct Diff {
     pub speedfactor: f32,
@@ -359,9 +361,11 @@ pub struct Controls {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Outcome {
     Playing,
-    /// Flew out through the gate; the next level has started.
+    /// Flew out through the gate. The game waits on this level until
+    /// `finish_level` gives the bonus and moves on.
     LevelDone,
-    /// The explosion finished and a life was lost; the level restarted.
+    /// The explosion finished and a life was lost; the ship is back at the
+    /// start of the same level.
     LifeLost,
     /// No lives left.
     GameOver,
@@ -394,6 +398,13 @@ pub struct Game {
     pub powerup_timer: [i32; PU_COUNT],
     pub diff_level: usize,
     pub gamespeed: i32,
+    /// The score that brings the next extra ship, and the one that brought
+    /// the last (NewManScore, LastNewManScore).
+    pub new_man_score: i64,
+    pub last_new_man_score: i64,
+    /// Ticks on this level, against its par (TimeOnLevel). Keeps running
+    /// through a lost life.
+    pub time_on_level: i64,
     pub rng: Rng,
     pub ship_destroyed: bool,
     pub ship_explode_timer: i32,
@@ -420,7 +431,6 @@ impl Game {
     pub fn new(a: &Assets, seed: u32, diff: usize) -> Game {
         let mut g = Game::blank(a, seed);
         g.diff_level = diff;
-        g.gamespeed = DIFF_SPEED[diff];
         g.level_init(a);
         g
     }
@@ -465,6 +475,9 @@ impl Game {
             powerup_timer: [0; PU_COUNT],
             diff_level: 2,
             gamespeed: 64,
+            new_man_score: 0,
+            last_new_man_score: 0,
+            time_on_level: 0,
             rng: Rng(if seed != 0 { seed } else { 0x9E37_79B9 }),
             ship_destroyed: false,
             ship_explode_timer: 0,
@@ -488,19 +501,78 @@ impl Game {
         &LEVELS[(self.level - 1) as usize]
     }
 
-    /// Fresh state on `level`, keeping score, lives and bombs (what
-    /// main.c does after a level or a lost life).
-    fn restart_at(&mut self, a: &Assets, level: i32) {
+    /// round(BaseGameSpeed * speedfactor): 45, 64, 64, 96, 128.
+    pub fn base_speed(diff: usize) -> i32 {
+        (64.0 * DIFFS[diff].speedfactor as f64).round() as i32
+    }
+
+    /// AddToScore: an extra ship for each `new_man_score` passed.
+    pub fn add_score(&mut self, points: i64) {
+        self.score += points;
+        while self.score >= self.new_man_score {
+            self.last_new_man_score = self.new_man_score;
+            self.new_man_score = self.last_new_man_score + self.level_rec().newman as i64;
+            self.lives += 1;
+            self.play(SND_WOOHOO);
+        }
+    }
+
+    /// The level clock, last thing in a tick; past par the game speeds up
+    /// by one base speed for every 32 seconds over.
+    fn clock_tick(&mut self) {
+        self.time_on_level += 1;
+        let par = self.level_rec().time as i64 * FRAME_RATE;
+        if self.time_on_level > par {
+            self.gamespeed = Game::base_speed(self.diff_level) + ((self.time_on_level - par) * 64 / (FRAME_RATE * 32)) as i32;
+        }
+    }
+
+    /// Seconds taken on this level and the bonus they earn (GiveBonus):
+    /// 500 for every whole second under par.
+    pub fn level_bonus(&self) -> (i32, i64) {
+        let taken = (self.time_on_level / FRAME_RATE) as i32;
+        (taken, ((self.level_rec().time - taken) as i64 * 500).max(0))
+    }
+
+    /// After `LevelDone`: the bonus into the score, then the next level, or
+    /// `Won` past level 50.
+    pub fn finish_level(&mut self, a: &Assets) -> Outcome {
+        let (_, bonus) = self.level_bonus();
+        self.add_score(bonus);
+        if self.level as usize >= MAX_LEVELS {
+            return Outcome::Won;
+        }
         let mut g = Game::blank(a, self.rng.0);
         g.score = self.score;
-        g.level = level;
+        g.level = self.level + 1;
         g.lives = self.lives;
         g.bombs = self.bombs;
         g.diff_level = self.diff_level;
-        g.gamespeed = DIFF_SPEED[self.diff_level];
+        g.last_new_man_score = self.last_new_man_score;
         g.sounds = std::mem::take(&mut self.sounds);
         *self = g;
         self.level_init(a);
+        Outcome::LevelDone
+    }
+
+    /// NewLife + StartNewLevel: the ship back at the start, enemies, shots,
+    /// enemy mines and power-ups gone, speed back to base; the level carries
+    /// on with its crystals, gate and clock.
+    fn life_restart(&mut self) {
+        let (w, h) = (self.ship.w, self.ship.h);
+        self.ship = Ship { w, h, x: SHIP_START_X, y: SHIP_START_Y, xbr: SHIP_START_X + w - 1, ybr: SHIP_START_Y + h - 1, sx: SHIP_START_X * 64, sy: SHIP_START_Y * 64, ..Ship::default() };
+        self.cam_x = (SHIP_START_X - VIEWPORT_W / 2).clamp(0, MAX_VISIBLE_X);
+        self.cam_y = (SHIP_START_Y - VIEWPORT_H / 2).clamp(0, MAX_VISIBLE_Y);
+        self.demo_override = None;
+        self.ship_destroyed = false;
+        self.ship_explode_timer = 0;
+        self.level_complete = false;
+        self.smart_bomb_flash = 0;
+        self.frame_count = 0;
+        self.gamespeed = Game::base_speed(self.diff_level);
+        self.powerup_timer = [0; PU_COUNT];
+        self.entities_level_init();
+        compact(&mut self.objects, |o| o.active && o.kind != ObjType::EnemyMine);
     }
 
     fn entities_level_init(&mut self) {
@@ -538,6 +610,9 @@ impl Game {
         self.gate_inner_x = (WORLD_W - rec.gate_width) / 2;
         self.gate_move_accum = 0;
         self.gate_move_dir = 1;
+        self.new_man_score = self.last_new_man_score + rec.newman as i64;
+        self.time_on_level = 0;
+        self.gamespeed = Game::base_speed(self.diff_level);
         self.entities_level_init();
 
         self.objects.clear();
@@ -598,13 +673,9 @@ impl Game {
         if !exploding {
             self.check_collisions(a);
         }
+        self.clock_tick();
 
         if self.level_complete {
-            let next = self.level + 1;
-            if next > MAX_LEVELS as i32 {
-                return (Outcome::Won, but, !exploding);
-            }
-            self.restart_at(a, next);
             return (Outcome::LevelDone, but, !exploding);
         }
         if self.ship_destroyed {
@@ -618,8 +689,7 @@ impl Game {
                 if self.lives <= 0 {
                     return (Outcome::GameOver, but, !exploding);
                 }
-                let level = self.level;
-                self.restart_at(a, level);
+                self.life_restart();
                 return (Outcome::LifeLost, but, !exploding);
             }
         }
@@ -795,7 +865,7 @@ impl Game {
             match o.kind {
                 ObjType::Crystal => {
                     self.play(SND_GETCRYSTAL);
-                    self.score += 200;
+                    self.add_score(200);
                     self.num_crystals -= 1;
                     if self.num_crystals <= 0 {
                         self.num_crystals = 0;
@@ -1336,7 +1406,7 @@ impl Game {
             return;
         }
 
-        self.score += k.score as i64;
+        self.add_score(k.score as i64);
         if k.death_sound == SND_EXPLOSN {
             let v = self.rng.range(3) as u8;
             self.play(SND_EXPLOSN + v);

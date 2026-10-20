@@ -109,26 +109,24 @@ pub fn replay(a: &Assets, d: &Demo) -> (usize, i32, i32, i64, i32, bool) {
     while ptr < d.frames.len() {
         let (dx, dy, but) = d.frames[ptr];
         let c = Controls { fire: but & BUT_FIRE != 0, held: but & BUT_FIRE_HELD != 0, bomb: but & BUT_BOMB != 0, demo: Some((dx as i32, dy as i32)), ..Controls::default() };
-        let before = (g.level, g.num_crystals);
+        let before = g.num_crystals;
         let (out, _, took) = g.step(a, c);
-        g.sounds.clear();
         if took {
             ptr += 1;
         }
+        crystals += (before - g.num_crystals).max(0);
         match out {
             Outcome::LevelDone => {
                 levels += 1;
-                crystals += before.1;
+                if g.finish_level(a) == Outcome::Won {
+                    break;
+                }
             }
             Outcome::LifeLost => deaths += 1,
             Outcome::GameOver => return (ptr, levels, crystals, g.score, deaths + 1, true),
-            Outcome::Won => break,
-            Outcome::Playing => {
-                if g.level == before.0 && g.num_crystals < before.1 {
-                    crystals += before.1 - g.num_crystals;
-                }
-            }
+            Outcome::Won | Outcome::Playing => {}
         }
+        g.sounds.clear();
     }
     (ptr, levels, crystals, g.score, deaths, false)
 }

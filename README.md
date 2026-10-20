@@ -13,7 +13,10 @@ sounds, drawn in a text terminal.
 
 Pick up every crystal on the level and the gate at the top opens; fly out
 through it to the next level. Mines blow you up, and so does the wall
-(unless you play Wimp). Enemies pour in through the side gates: Grungers,
+(unless you play Wimp). Each level has a par time, counting down at the
+top right: beat it and every second left is worth 500 points; overstay
+it and the game starts to speed up. An extra ship comes every 15,000
+points on the first levels, up to every 100,000 later. Enemies pour in through the side gates: Grungers,
 Zippos, Zingers, Vinces, Miners, Meebies, Retaliators, Terriers, Doingers,
 Snipes, Tribblers, Buckshots, Clusters, Sticktights and Repulsors. Catch a
 Supercrystal for a power-up: Shield, AimedFire, RapidFire, MultiFire,
@@ -56,13 +59,14 @@ moment after you let go.
 | | Speed | Enemies | Walls |
 |---|---|---|---|
 | Wimp | 0.7x | 0.7x | bounce |
-| Timid | 0.84x | 1.0x | deadly |
+| Timid | 1.0x | 1.0x | deadly |
 | Average | 1.0x | 1.0x | deadly |
-| Tricky | 1.2x | 1.2x | deadly |
-| Inhuman | 1.5x | 1.5x | deadly |
+| Tricky | 1.5x | 1.2x | deadly |
+| Inhuman | 2.0x | 1.5x | deadly |
 
-(As in xquest-sdl: the speeds are its `DIFF_SPEED`, 45, 54, 64, 77 and 96
-against Average's 64.)
+The speeds are the original's `round(64 * speedfactor)`. Timid's walls
+are deadly here because they are in xquest-sdl; in the 1994 game they
+bounce on Timid too.
 
 ### How it looks
 
@@ -115,9 +119,11 @@ cargo test --release
 
 `reference_demo_replays_as_in_xquest_sdl` replays xquest-sdl's own test
 recording, `tests/data/reference.dmo` there, through AQuest's engine and
-checks the result xquest-sdl's `tests/test_replay.c` checks: 12,066
-frames, 6 levels, 162 crystals, 36,000 points, 2 deaths. Any change to the
-physics, the collisions or the order of random draws breaks it.
+checks the result xquest-sdl's `tests/test_replay.c` checks: 11,220
+frames, 6 levels, 124 crystals, 39,400 points, 5 deaths, game over. Any
+change to the physics, the collisions or the order of random draws breaks
+it. (The recording predates the par time, so it meets a faster game than
+it was flown in, and ends early; it still pins the engine exactly.)
 
 `RUST_LOG=debug aquest 2>aquest.log` logs every key and click, each state
 change, and a snapshot of the game twice a second.
@@ -130,7 +136,9 @@ terminal around it:
 - The picture is fitted to the terminal in Blocks or Braille (`view.rs`);
   the menus, Game Over box and Hall of Fame are text over the starfield
   instead of Mark's comix font, which is too fine to read shrunk.
-- A text status line under smaller pictures.
+- A text status line under smaller pictures, the countdown as text in
+  the field's corner, and the level-end bonus window as a text box; at
+  full size they are Mark's own pixels.
 - The mouse thrusts by how far the pointer moves between cells (a
   terminal has no relative mouse), at about xquest-sdl's sensitivity.
 - Keys for the smart bomb (B, X) and brake (Z), which xquest-sdl had on

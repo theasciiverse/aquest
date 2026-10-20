@@ -54,6 +54,8 @@ pub struct Assets {
     pub corner: Vec<Sprite>,
     pub enemy_gate_left: Vec<Sprite>,
     pub enemy_gate_right: Vec<Sprite>,
+    /// The small digits of the countdown (SmallFont).
+    pub digit: Vec<Sprite>,
     pub font: Vec<Sprite>,
     pub startpic: Sprite,
     /// xquest2.fnt by ASCII code; glyphs are 0 clear, 1 stroke, 2 shadow.
@@ -202,7 +204,7 @@ impl Assets {
         let enemy_gate_left = sprites(r, GATE_FRAMES)?;
         let enemy_gate_right = sprites(r, GATE_FRAMES)?;
         let _attractor = sprite(r)?;
-        let _digits = sprites(r, 10)?;
+        let digit = sprites(r, 10)?;
 
         let font = sprites(&mut Reader { b: FNT, at: 0 }, 40)?;
 
@@ -242,6 +244,7 @@ impl Assets {
             corner,
             enemy_gate_left,
             enemy_gate_right,
+            digit,
             font,
             startpic,
             comix,

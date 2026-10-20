@@ -47,6 +47,9 @@ da200840b1b030ad3693c8062069d1da87d1104b5ca8e160d551b3a934470a58  xquest.fnt
 
 - `cargo test`: xquest-sdl's `reference.dmo` gives 12,066 frames, 6 levels,
   162 crystals, 36,000 points, 2 deaths, as `test_replay.c` expects.
+  After the par-time and extra-ship changes (both games, independently
+  written): 11,220 frames, 6 levels, 124 crystals, 39,400 points, 5
+  deaths, game over, in both.
 - Three games recorded in AQuest (Average, Tricky, Inhuman) replayed in a C
   harness built from xquest-sdl's own sources: identical frames, crystals,
   points and deaths (`aquest --verify FILE` prints the same summary line).
@@ -82,28 +85,46 @@ da200840b1b030ad3693c8062069d1da87d1104b5ca8e160d551b3a934470a58  xquest.fnt
 - Menus and tables are terminal text: the comix font (`assets.comix`,
   loaded) is unreadable shrunk. Using it at full size is an open idea.
 
-## Things noticed in xquest-sdl (not changed here)
+## The original Pascal
 
-Reported to David 2026-10-20; AQuest follows xquest-sdl as it is:
+Mark's source is in xquest-sdl's GitHub release
+`archive-original-distribution` (`xquest-1.3-original-distribution.zip`:
+xquest.pas, xqvars.pas, xqinit.pas, xqenter.pas and the rest). Check
+gameplay questions there, not in memory.
 
-- `LevelRecord.newman` (extra ship every N points), `.time` and
-  `.bonus_level` are in the level table but nothing reads them, so there
-  are no extra lives and no time bonus.
-- `g_diff_levels` gives Timid `rebound = true` and the README says Timid
-  bounces off walls, but `game_tick` bounces only on Wimp
-  (`diff_level == 0`).
-- `diff_speed {45, 54, 64, 77, 96}` in main.c does not match
-  `round(64 * speedfactor)` from `g_diff_levels` (45, 64, 64, 96, 128),
-  which game.h's comment says it should be.
-- After a lost life, `game_init` + `level_init` deal the level afresh:
-  new crystals and mines, the count back to full.
+## Fixed in xquest-sdl and here (2026-10-20, xquest-sdl `e26270e`)
+
+Read from xquest.pas, approved by David, done in both:
+
+- Extra ships (`newman`): `add_score` gives a ship with the woohoo each
+  time the score reaches the last extra ship's score plus the level's
+  `newman` (AddToScore, BonusShip).
+- Par time (`time`): the level clock runs through the level, lost lives
+  included; the countdown (ShowCountDown, small digit font, top right);
+  the bonus window, 500 a second under par (GiveBonus); past par the speed
+  rises by one base speed every 32 seconds over.
+- Difficulty speeds `round(64 * speedfactor)`: 45, 64, 64, 96, 128.
+- A lost life restarts the level (NewLife + StartNewLevel) instead of
+  dealing it afresh.
+- `bonus_level` stays unread: the original compiled it out
+  (`{$UNDEF BONUSLEVEL}`).
+
+## Still different from the 1994 game (found 2026-10-20, not changed)
+
+- Timid walls: the original kills on walls only when `DiffLevel>1`, so
+  Timid bounces; xquest-sdl's `game_tick` bounces on Wimp alone.
+- Power-ups: the original clears them only on a lost life (NewLife);
+  xquest-sdl clears them at every level too (`game_init`).
+- After level 50 the original goes round again, faster each time
+  (GameClocked, the "rank" message); xquest-sdl ends the game.
 
 ## Catalog
 
 - id `aquest`, binary `aquest`, kind game, genre arcade;
   `hub/catalog/aquest.toml` and `.md` (2026-10-20).
 - Preview: `asciiverse/record-preview.sh` (100x30, the built-in demo,
-  levels 1 to 3, Braille from 18 s to 34 s; still at 40 s). About 16 MB:
+  levels 1 and 2 with the countdown, Braille from 18 s to 34 s; still at
+  41 s, the level 2 bonus window). About 16 MB:
   the game redraws at 67 frames a second. The header's `term.version`
   ("tmux 3.6") was removed by hand after recording.
 - Website mockup: NEW! banner in `dev/mock-titles.toml`, cast in
@@ -112,7 +133,9 @@ Reported to David 2026-10-20; AQuest follows xquest-sdl as it is:
   mockup's `local_binary` looks in `games/<id>`, which this folder's
   capitals miss, hence the packaged release.
 - Release workflow `.github/workflows/release.yml`, on ASCII Wars!'
-  pattern; not run, no GitHub repo yet.
+  pattern; not run yet (no tag pushed).
+- Repo: private at github.com/theasciiverse/aquest, branch `main`
+  (pushed 2026-10-20).
 
 ## Commands
 

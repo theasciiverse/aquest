@@ -3,7 +3,7 @@
 //! then fits this picture to the terminal.
 
 use crate::assets::{Assets, Sprite, font_glyph};
-use crate::game::{Game, ObjType, PU_COUNT, VIEWPORT_H, WORLD_H, WORLD_W};
+use crate::game::{FRAME_RATE, Game, ObjType, PU_COUNT, VIEWPORT_H, WORLD_H, WORLD_W};
 use crate::starfield::Starfield;
 
 pub const W: i32 = 320;
@@ -128,8 +128,9 @@ impl Frame {
         }
     }
 
-    /// The whole game screen. `ship` is false while it explodes.
-    pub fn game(&mut self, a: &Assets, g: &Game, sf: &Starfield) {
+    /// The whole game screen. The countdown is drawn only `full` size: shrunk,
+    /// its five-pixel digits are a smudge, and the terminal shows it as text.
+    pub fn game(&mut self, a: &Assets, g: &Game, sf: &Starfield, full: bool) {
         self.fill(0, HUD_Y, self.pal[0]);
         self.fill(HUD_Y, H, self.pal[1]);
         self.stars(sf, VIEWPORT_H);
@@ -179,6 +180,16 @@ impl Frame {
         for e in g.enemies.iter().filter(|e| e.active) {
             self.world(&a.enemy[e.kind][(e.frame >> 8) as usize], e.x, e.y, g);
         }
+        if let Some(t) = countdown(g).filter(|_| full) {
+            // TimerX=280, kept clear of the right-hand border; the colons
+            // are gaps, only digits are drawn
+            let wx = (g.cam_x + 280).min(WORLD_W - 46);
+            for (i, c) in format!("{t:>7}").bytes().enumerate() {
+                if c.is_ascii_digit() {
+                    self.world(&a.digit[(c - b'0') as usize], wx + i as i32 * 5, g.cam_y + 10, g);
+                }
+            }
+        }
         if g.ship_explode_timer == 0 {
             self.world(&a.ship[g.ship.dir], g.ship.x, g.ship.y, g);
         }
@@ -210,6 +221,39 @@ impl Frame {
         }
     }
 
+    fn rect(&mut self, x1: i32, y1: i32, x2: i32, y2: i32, c: usize) {
+        for y in y1.max(0)..=y2.min(H - 1) {
+            for x in x1.max(0)..=x2.min(W - 1) {
+                self.px[(y * W + x) as usize] = self.pal[c];
+            }
+        }
+    }
+
+    /// XText with its box (DrawBox).
+    fn boxed(&mut self, a: &Assets, x: i32, y: i32, s: &str) {
+        let n = s.len() as i32;
+        self.text(a, x, y, s);
+        self.rect(x - 2, y - 1, x + n * 8 + 2, y - 1, 10);
+        self.rect(x - 2, y, x - 2, y + 14, 10);
+        self.rect(x - 2, y + 14, x + n * 8 + 2, y + 14, 23);
+        self.rect(x + n * 8 + 2, y, x + n * 8 + 2, y + 14, 23);
+    }
+
+    /// GiveBonus's window: XWindow(50,40,270,160) with a bevel of 2.
+    pub fn bonus_window(&mut self, a: &Assets, b: &Bonus) {
+        let (x1, y1, x2, y2, bs) = (50, 40, 270, 160, 2);
+        self.rect(x1 + bs, y1 + bs, x2 - bs, y2 - bs, 14);
+        self.rect(x1 + bs, y1, x2 - bs, y1 + bs, 23);
+        self.rect(x1 + bs, y2 - bs, x2 - bs, y2, 10);
+        self.rect(x1, y1 + bs, x1 + bs, y2 - bs, 20);
+        self.rect(x2 - bs, y1 + bs, x2, y2 - bs, 12);
+        let lines = b.lines();
+        self.boxed(a, x1 + 42, y1 + 15, &lines[0]);
+        for (i, l) in lines[1..].iter().enumerate() {
+            self.boxed(a, x1 + 20, y1 + 40 + 25 * i as i32, l);
+        }
+    }
+
     /// xquest.fnt text, 8 pixels a character; index 14 is its background.
     fn text(&mut self, a: &Assets, mut x: i32, y: i32, s: &str) {
         for c in s.bytes() {
@@ -229,6 +273,45 @@ impl Frame {
             x += 8;
         }
     }
+}
+
+/// What the level-end window shows at this moment.
+pub struct Bonus {
+    pub level: i32,
+    pub taken: i32,
+    pub par: i32,
+    pub bonus: i64,
+}
+
+impl Bonus {
+    /// The four lines of GiveBonus, the figures where it puts them.
+    pub fn lines(&self) -> [String; 4] {
+        [
+            format!("LEVEL {} COMPLETED", self.level),
+            format!("TIME TAKEN: {:3} SECONDS", self.taken),
+            format!("PAR       : {:3} SECONDS", self.par),
+            format!("BONUS     :  {:<7}   ", self.bonus),
+        ]
+    }
+}
+
+/// The countdown to par as ShowCountDown writes it, `[m:]ss:hh`, or None
+/// once past par.
+pub fn countdown(g: &Game) -> Option<String> {
+    let t = g.level_rec().time as i64 * FRAME_RATE - g.time_on_level;
+    if t < 0 {
+        return None;
+    }
+    let bits = (t % FRAME_RATE) * 100 / FRAME_RATE;
+    let secs = t / FRAME_RATE;
+    let (mins, secs) = (secs / 60, secs % 60);
+    Some(if mins > 0 {
+        format!("{mins}:{secs:02}:{bits:02}")
+    } else if secs > 0 {
+        format!("{secs}:{bits:02}")
+    } else {
+        format!("{bits:02}")
+    })
 }
 
 /// A power-up's icon blinks in its last three seconds.

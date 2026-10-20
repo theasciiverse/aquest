@@ -13,7 +13,7 @@ mod view;
 use assets::Assets;
 use audio::Audio;
 use demo::Demo;
-use frame::{Frame, Rgb};
+use frame::{Bonus, Frame, Rgb};
 use game::{BUT_BOMB, BUT_FIRE, BUT_FIRE_HELD, DIFF_NAMES, Game, Outcome, PU_COUNT};
 use input::{Cmd, Input};
 use ratatui::buffer::Buffer;
@@ -39,6 +39,13 @@ const MENU_IDLE: Duration = Duration::from_secs(30);
 /// Mouse thrust per game pixel moved: about what xquest-sdl's relative
 /// mouse gives at its usual window size.
 const MOUSE_GAIN: f32 = 3.5;
+
+// The level-end bonus, in ticks, as GiveBonus times it in Ticks (180 a
+// second): half a second before and between the counts, a fifteenth of a
+// second a step, two and a half seconds at the end.
+const BONUS_PAUSE: u32 = 33;
+const BONUS_STEP: u32 = 4;
+const BONUS_HOLD: u32 = 167;
 
 const HELP: &str = "aquest [options]
 
@@ -88,6 +95,8 @@ enum Screen {
     Play,
     /// The Game Over box over the last picture.
     GameOver { until: Instant },
+    /// The level-end window, `t` ticks in (GiveBonus).
+    Bonus { t: u32 },
     /// "A New High Score!" flashing, then the name typed in.
     NewScore { rank: usize, typing: bool, until: Instant },
     Fame { diff: usize, until: Instant },
@@ -129,6 +138,10 @@ struct App {
     px_per_cell: (f32, f32),
     last_mouse: Option<(u16, u16)>,
     quit: bool,
+    /// While the bonus window is up: what it shows, and the points poured
+    /// into the score so far.
+    bonus_view: Option<Bonus>,
+    poured: i64,
 }
 
 fn main() -> io::Result<()> {
@@ -222,6 +235,8 @@ fn main() -> io::Result<()> {
         px_per_cell: (1.0, 1.0),
         last_mouse: None,
         quit: false,
+        bonus_view: None,
+        poured: 0,
         settings,
     };
     if let Some(d) = playback {
@@ -532,6 +547,7 @@ impl App {
         match self.screen.clone() {
             Screen::Menu => self.tick_menu(&cmds, now),
             Screen::Play => self.tick_play(&cmds, now),
+            Screen::Bonus { t } => self.tick_bonus(&cmds, t),
             Screen::GameOver { until } => {
                 if now >= until || cmds.contains(&Cmd::Any) {
                     self.after_game_over(now);
@@ -664,7 +680,12 @@ impl App {
         self.sf.step();
         match out {
             Outcome::Playing => {}
-            Outcome::LevelDone => log::info!("level {} reached, score {}", g.level, g.score),
+            Outcome::LevelDone => {
+                let (taken, bonus) = g.level_bonus();
+                log::info!("level {} done in {taken} s, bonus {bonus}", g.level);
+                self.audio.play(game::SND_PHEW);
+                self.screen = Screen::Bonus { t: 0 };
+            }
             Outcome::LifeLost => log::info!("life lost, {} left, level {}", g.lives, g.level),
             Outcome::GameOver | Outcome::Won => {
                 let score = g.score;
@@ -675,6 +696,87 @@ impl App {
                     self.end_game(score);
                 }
             }
+        }
+    }
+
+    /// The bonus window at tick `t`: what it shows and the points poured
+    /// so far; None once it is over.
+    fn bonus_at(&self, t: u32) -> Option<(Bonus, i64)> {
+        let g = self.game.as_ref()?;
+        let (taken, bonus) = g.level_bonus();
+        let n = (bonus / 500) as u32;
+        let up_end = BONUS_PAUSE + n * BONUS_STEP;
+        let pause_end = up_end + if n > 0 { BONUS_PAUSE } else { 0 };
+        let down_end = pause_end + n * BONUS_STEP;
+        if t >= down_end + BONUS_HOLD {
+            return None;
+        }
+        let (shown_taken, shown, poured) = if t < BONUS_PAUSE {
+            (taken, 0, 0)
+        } else if t < up_end {
+            let i = (t - BONUS_PAUSE) / BONUS_STEP + 1;
+            (taken + i as i32, i as i64 * 500, 0)
+        } else if t < pause_end {
+            (taken + n as i32, bonus, 0)
+        } else if t < down_end {
+            let j = ((t - pause_end) / BONUS_STEP + 1) as i64;
+            (taken + n as i32, bonus - j * 500, j * 500)
+        } else {
+            (taken + n as i32, 0, bonus)
+        };
+        Some((Bonus { level: g.level, taken: shown_taken, par: g.level_rec().time, bonus: shown }, poured))
+    }
+
+    fn tick_bonus(&mut self, cmds: &[Cmd], t: u32) {
+        self.sf.step();
+        let Some(g) = &self.game else { return };
+        let n = (g.level_bonus().1 / 500) as u32;
+        let up_end = BONUS_PAUSE + n * BONUS_STEP;
+        let pause_end = up_end + if n > 0 { BONUS_PAUSE } else { 0 };
+        let down_end = pause_end + n * BONUS_STEP;
+        // the countdown sound on every third step up and every step down
+        if t >= BONUS_PAUSE && t < up_end && (t - BONUS_PAUSE) % BONUS_STEP == 0 && ((t - BONUS_PAUSE) / BONUS_STEP + 1) % 3 == 1
+            || t >= pause_end && t < down_end && (t - pause_end) % BONUS_STEP == 0
+        {
+            self.audio.play(game::SND_COUNTDOWN);
+        }
+        // a key hurries it to the end, a second one closes it
+        let key = cmds.iter().any(|c| matches!(c, Cmd::Any | Cmd::Confirm));
+        let mut t = t + 1;
+        if key {
+            if t < down_end {
+                if n > 0 {
+                    self.audio.play(game::SND_COUNTDOWN);
+                }
+                t = down_end;
+            } else {
+                t = down_end + BONUS_HOLD;
+            }
+        }
+        if let Some((b, poured)) = self.bonus_at(t) {
+            self.bonus_view = Some(b);
+            self.poured = poured;
+            self.screen = Screen::Bonus { t };
+            return;
+        }
+        self.bonus_view = None;
+        self.poured = 0;
+        let Some(g) = &mut self.game else { return };
+        let out = g.finish_level(&self.a);
+        for s in std::mem::take(&mut g.sounds) {
+            self.audio.play(s);
+        }
+        log::info!("on to level {}, score {}, lives {}", g.level, g.score, g.lives);
+        if out == Outcome::Won {
+            let score = g.score;
+            if self.playback.is_some() {
+                self.to_menu();
+            } else {
+                self.end_game(score);
+            }
+        } else {
+            self.screen = Screen::Play;
+            self.input.clear();
         }
     }
 
@@ -765,6 +867,13 @@ impl App {
             Screen::Play => {
                 self.draw_play(buf, area);
             }
+            Screen::Bonus { .. } => {
+                let field = self.draw_play(buf, area);
+                if let (Some(b), false) = (&self.bonus_view, self.full_size(area)) {
+                    let l = b.lines();
+                    self.draw_box(buf, field, &[&l[0], "", &l[1], &l[2], &l[3]]);
+                }
+            }
             Screen::GameOver { .. } => {
                 let field = self.draw_play(buf, area);
                 let score = self.game.as_ref().map_or(0, |g| g.score);
@@ -835,13 +944,22 @@ impl App {
         put_centred(buf, area, area.bottom() - 1, keys, Style::default().fg(Color::Rgb(90, 90, 90)));
     }
 
+    /// Whether the picture fits at full size, with the original status bar.
+    fn full_size(&self, area: Rect) -> bool {
+        view::place(area, frame::W, frame::H, self.settings.view, self.aspect).tw as i32 >= frame::W
+    }
+
     /// The game; returns the field's cells.
     fn draw_play(&mut self, buf: &mut Buffer, area: Rect) -> Rect {
         let v = self.settings.view;
         let whole = view::place(area, frame::W, frame::H, v, self.aspect);
         self.set_stars(whole.tw, whole.th);
+        let full = whole.tw as i32 >= frame::W;
         let Some(g) = &self.game else { return area };
-        self.frame.game(&self.a, g, &self.sf);
+        self.frame.game(&self.a, g, &self.sf, full);
+        if let (Some(b), true) = (&self.bonus_view, full) {
+            self.frame.bonus_window(&self.a, b);
+        }
         // the original status bar once the picture is full size
         let (field, hud_row) = if whole.tw as i32 >= frame::W {
             view::draw(buf, &self.frame, (0, 0, frame::W, frame::H), &whole, v);
@@ -856,6 +974,11 @@ impl App {
             self.draw_hud(buf, field, y);
         }
         let label = Style::default().fg(Color::Rgb(255, 255, 255)).bg(Color::Rgb(0, 0, 0)).add_modifier(Modifier::BOLD);
+        if !full && let Some(t) = self.game.as_ref().and_then(frame::countdown) {
+            // the countdown to par, top right as in the original
+            let s = format!(" {t} ");
+            put(buf, field.right().saturating_sub(s.len() as u16 + 1), field.y, &s, label.fg(Color::Rgb(200, 200, 200)));
+        }
         let mid = field.y + field.height / 2;
         if self.quit_confirm {
             put_centred(buf, field, mid, " QUIT?  Y quits, any other key plays on ", label);
@@ -879,7 +1002,7 @@ impl App {
         let white = Style::default().fg(Color::Rgb(230, 230, 230)).bg(bg).add_modifier(Modifier::BOLD);
         let dim = Style::default().fg(Color::Rgb(130, 130, 130)).bg(bg);
 
-        let left = format!(" {:>8}", g.score);
+        let left = format!(" {:>8}", g.score + self.poured);
         put(buf, field.x, y, &left, white);
         let rec = g.level_rec();
         let right = [
