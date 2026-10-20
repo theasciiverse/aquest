@@ -142,6 +142,13 @@ struct App {
     /// into the score so far.
     bonus_view: Option<Bonus>,
     poured: i64,
+    /// What the HUD last saw, to notice pickups: power-up timers, the
+    /// length each ran from when last given, and the ships.
+    seen_pu: [i32; PU_COUNT],
+    pu_full: [i32; PU_COUNT],
+    seen_lives: i32,
+    /// The pickup banner: title, what it does, colour, ticks left.
+    banner: Option<(String, &'static str, Rgb, u32)>,
 }
 
 fn main() -> io::Result<()> {
@@ -227,6 +234,10 @@ fn main() -> io::Result<()> {
         quit: false,
         bonus_view: None,
         poured: 0,
+        seen_pu: [0; PU_COUNT],
+        pu_full: [1; PU_COUNT],
+        seen_lives: 0,
+        banner: None,
         settings,
     };
     if let Some(t) = value("--shot").and_then(|v| v.parse::<u32>().ok()) {
@@ -380,6 +391,71 @@ fn put_centred(buf: &mut Buffer, r: Rect, y: u16, s: &str, style: Style) {
     put(buf, r.x + r.width.saturating_sub(w) / 2, y, s, style);
 }
 
+/// The power-ups by their place in the timers: chip label, full name,
+/// what it does.
+const PU_INFO: [(&str, &str, &str); PU_COUNT] = [
+    ("Shield", "SHIELD", "nothing can hurt you, walls bounce"),
+    ("Aimed", "AIMED FIRE", "shots lead the nearest enemy"),
+    ("Rapid", "RAPID FIRE", "hold fire to keep shooting"),
+    ("Multi", "MULTI FIRE", "three shots at once"),
+    ("Ass", "ASS FIRE", "shoots behind you too"),
+    ("Heavy", "HEAVY FIRE", "every shot kills"),
+    ("Bounce", "BOUNCE", "shots bounce off the walls"),
+];
+
+/// Big digits for the score, 3x5 pixels, drawn in half blocks.
+const BIG: [[u8; 5]; 10] = [
+    [0b111, 0b101, 0b101, 0b101, 0b111],
+    [0b010, 0b110, 0b010, 0b010, 0b111],
+    [0b111, 0b001, 0b111, 0b100, 0b111],
+    [0b111, 0b001, 0b111, 0b001, 0b111],
+    [0b101, 0b101, 0b111, 0b001, 0b001],
+    [0b111, 0b100, 0b111, 0b001, 0b111],
+    [0b111, 0b100, 0b111, 0b101, 0b111],
+    [0b111, 0b001, 0b010, 0b010, 0b010],
+    [0b111, 0b101, 0b111, 0b101, 0b111],
+    [0b111, 0b101, 0b111, 0b001, 0b111],
+];
+
+/// `n` in big digits from (x, y); returns the width. Small: half blocks,
+/// three rows tall. Tall: a pixel a cell row and two columns, five rows.
+fn put_big(buf: &mut Buffer, x: u16, y: u16, n: i64, tall: bool, style: Style) -> u16 {
+    let s = n.max(0).to_string();
+    let mut cx = x;
+    if tall {
+        for ch in s.bytes() {
+            let d = &BIG[(ch - b'0') as usize];
+            for (row, bits) in d.iter().enumerate() {
+                for col in 0..3u16 {
+                    if bits & (0b100 >> col) != 0 {
+                        put(buf, cx + col * 2, y + row as u16, "██", style);
+                    }
+                }
+            }
+            cx += 7;
+        }
+        return (s.len() as u16 * 7).saturating_sub(1);
+    }
+    for ch in s.bytes() {
+        let d = &BIG[(ch - b'0') as usize];
+        for row in 0..3u16 {
+            for col in 0..3u16 {
+                let on = |r: usize| r < 5 && d[r] & (0b100 >> col) != 0;
+                let (t, b) = (on(row as usize * 2), on(row as usize * 2 + 1));
+                let c = match (t, b) {
+                    (true, true) => '█',
+                    (true, false) => '▀',
+                    (false, true) => '▄',
+                    _ => ' ',
+                };
+                put(buf, cx + col, y + row, &c.to_string(), style);
+            }
+        }
+        cx += 4;
+    }
+    (s.len() as u16 * 4).saturating_sub(1)
+}
+
 impl App {
     fn now_seed(&self) -> u32 {
         self.seed.unwrap_or_else(|| std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.subsec_nanos() ^ d.as_secs() as u32).unwrap_or(1))
@@ -390,6 +466,7 @@ impl App {
         let diff = self.settings.difficulty;
         log::info!("start game diff={} seed={seed} record={record}", DIFF_NAMES[diff]);
         self.game = Some(Game::new(&self.a, seed, diff));
+        self.reset_watch();
         self.recording = record.then(|| (Demo::start(seed, diff), self.record_to.clone().or_else(save::demo_path)));
         self.playback = None;
         self.sf = Starfield::new(0);
@@ -403,6 +480,7 @@ impl App {
         let diff = d.difficulty().unwrap_or(self.settings.difficulty);
         log::info!("play demo seed={} diff={} frames={}", d.seed, DIFF_NAMES[diff], d.frames.len());
         self.game = Some(Game::new(&self.a, d.seed, diff));
+        self.reset_watch();
         self.playback = Some(Playback { demo: d, at: 0 });
         self.recording = None;
         self.sf = Starfield::new(0);
@@ -614,6 +692,50 @@ impl App {
                 }
             }
         }
+        if self.screen == Screen::Play {
+            self.watch_pickups();
+        }
+    }
+
+    fn reset_watch(&mut self) {
+        self.seen_pu = [0; PU_COUNT];
+        self.pu_full = [1; PU_COUNT];
+        self.seen_lives = self.game.as_ref().map_or(0, |g| g.lives);
+        self.banner = None;
+    }
+
+    /// Notice what the player just got, from the HUD's side: a power-up
+    /// timer that jumped up, a ship more than before. The game itself is
+    /// left alone.
+    fn watch_pickups(&mut self) {
+        const BANNER: u32 = 150;
+        if let Some(b) = &mut self.banner {
+            b.3 = b.3.saturating_sub(1);
+            if b.3 == 0 {
+                self.banner = None;
+            }
+        }
+        let Some(g) = &self.game else { return };
+        for pu in 0..PU_COUNT {
+            let (t, before) = (g.powerup_timer[pu], self.seen_pu[pu]);
+            if t > before {
+                self.pu_full[pu] = t.max(1);
+                // the cleared mines leave a one-tick shield, not a power-up
+                let (title, what) = if pu == game::PU_SHIELD && t == 1 && before == 0 {
+                    ("MINES CLEARED".to_string(), "every mine on the level is gone")
+                } else {
+                    (PU_INFO[pu].1.to_string(), PU_INFO[pu].2)
+                };
+                log::info!("pickup: {title}");
+                self.banner = Some((title, what, frame::main_colour(&self.a, &self.a.powerup_hud[pu]), BANNER));
+            }
+            self.seen_pu[pu] = t;
+        }
+        if g.lives > self.seen_lives {
+            log::info!("pickup: extra ship");
+            self.banner = Some(("EXTRA SHIP".into(), "one more life", frame::main_colour(&self.a, &self.a.ship_icon), BANNER));
+        }
+        self.seen_lives = g.lives;
     }
 
     fn tick_menu(&mut self, cmds: &[Cmd], now: Instant) {
@@ -1011,13 +1133,25 @@ impl App {
             view::draw(buf, &self.frame, (0, 0, frame::W, frame::H), &whole, v);
             (whole.cells, None)
         } else {
-            let p = view::place(Rect { height: area.height - 1, ..area }, frame::W, frame::HUD_Y, v, self.aspect);
+            let hud_h = self.hud_rows(area);
+            let p = view::place(Rect { height: area.height - hud_h, ..area }, frame::W, frame::HUD_Y, v, self.aspect);
             view::draw(buf, &self.frame, (0, 0, frame::W, frame::HUD_Y), &p, v);
             (p.cells, Some(p.cells.bottom()))
         };
         self.px_per_cell = (frame::W as f32 / field.width as f32, frame::HUD_Y as f32 / field.height as f32);
         if let Some(y) = hud_row {
-            self.draw_hud(buf, field, y);
+            let rows = self.hud_rows(area);
+            if rows > 1 && self.draw_big_hud(buf, field, y, rows == 5) {
+            } else {
+                self.draw_hud(buf, field, y);
+            }
+        }
+        if let Some((title, what, c, _)) = &self.banner {
+            // the pickup, a quarter of the way down the field
+            let y = field.y + field.height / 4;
+            let t = format!("  {title}  ");
+            put_centred(buf, field, y, &t, Style::default().fg(Color::Rgb(0, 0, 0)).bg(rgb(*c)).add_modifier(Modifier::BOLD));
+            put_centred(buf, field, y + 1, &format!(" {what} "), Style::default().fg(Color::Rgb(230, 230, 230)).bg(Color::Rgb(0, 0, 0)));
         }
         let label = Style::default().fg(Color::Rgb(255, 255, 255)).bg(Color::Rgb(0, 0, 0)).add_modifier(Modifier::BOLD);
         if !full && let Some(t) = self.game.as_ref().and_then(frame::countdown) {
@@ -1036,6 +1170,83 @@ impl App {
             put_centred(buf, field, field.y, s, label.fg(self.highlight()));
         }
         field
+    }
+
+    /// The status bar's rows: five on tall terminals, three where there is
+    /// room, else one.
+    fn hud_rows(&self, area: Rect) -> u16 {
+        if area.height >= 45 && area.width >= 110 {
+            5
+        } else if area.height >= 22 && area.width >= 70 {
+            3
+        } else {
+            1
+        }
+    }
+
+    /// The status bar in three rows: the score in big digits, all seven
+    /// power-ups as chips (lit and draining while active), and ships, bombs
+    /// and crystals named. False if the field is too narrow for it.
+    fn draw_big_hud(&self, buf: &mut Buffer, field: Rect, y: u16, tall: bool) -> bool {
+        // tall: five rows, the lines two apart
+        let (h, gap) = if tall { (5, 2) } else { (3, 1) };
+        let Some(g) = &self.game else { return false };
+        let a = &self.a;
+        let score = g.score + self.poured;
+        let digits = score.max(0).to_string().len() as u16;
+        const CHIP: u16 = 8;
+        let chips_w = 4 * CHIP + 3;
+        let right_w = 12;
+        let score_w = if tall { (digits * 7).max(4 * 7) } else { (digits * 4).max(4 * 4) };
+        if score_w + 2 + chips_w + 2 + right_w + 2 > field.width {
+            return false;
+        }
+        let bg = Color::Rgb(8, 8, 8);
+        buf.set_style(Rect::new(field.x, y, field.width, h), Style::default().bg(bg));
+
+        // the score
+        put_big(buf, field.x + 1, y, score, tall, Style::default().fg(Color::Rgb(240, 240, 240)).bg(bg));
+
+        // ships, bombs, crystals and the level, right-aligned
+        let rx = field.right() - right_w - 1;
+        let rec = g.level_rec();
+        let rows = [
+            ("▲", "Ships", (g.lives - 1).max(0).to_string(), frame::main_colour(a, &a.ship_icon)),
+            ("✱", "Bombs", g.bombs.to_string(), frame::main_colour(a, &a.smart_bomb_hud)),
+            ("◆", "Gems", format!("{}/{}", rec.numcryst - g.num_crystals, rec.numcryst), frame::main_colour(a, &a.crystal_hud)),
+        ];
+        for (i, (icon, name, val, c)) in rows.iter().enumerate() {
+            let yy = y + i as u16 * gap;
+            put(buf, rx, yy, icon, Style::default().fg(rgb(*c)).bg(bg));
+            put(buf, rx + 2, yy, name, Style::default().fg(Color::Rgb(150, 150, 150)).bg(bg));
+            put(buf, rx + right_w - val.len() as u16, yy, val, Style::default().fg(Color::Rgb(240, 240, 240)).bg(bg).add_modifier(Modifier::BOLD));
+        }
+
+        // the power-ups, centred between, four on the top row, three below
+        let left = field.x + 1 + score_w + 2;
+        let cx = left + (rx.saturating_sub(left + 2)).saturating_sub(chips_w) / 2;
+        for pu in 0..PU_COUNT {
+            let (row, col) = (pu / 4, pu % 4);
+            let x = cx + col as u16 * (CHIP + 1) + if row == 1 { (CHIP + 1) / 2 } else { 0 };
+            let t = g.powerup_timer[pu];
+            let c = frame::main_colour(a, &a.powerup_hud[pu]);
+            let label = format!("{:^w$}", PU_INFO[pu].0, w = CHIP as usize);
+            let active = t > 0 && frame::powerup_shown(t);
+            let filled = if t > 0 { ((t as f32 / self.pu_full[pu] as f32) * CHIP as f32).ceil() as usize } else { 0 };
+            for (i, ch) in label.chars().enumerate() {
+                let st = if active && i < filled {
+                    Style::default().fg(Color::Rgb(0, 0, 0)).bg(rgb(c)).add_modifier(Modifier::BOLD)
+                } else if active {
+                    Style::default().fg(rgb(c)).bg(Color::Rgb(30, 30, 30)).add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(Color::Rgb(70, 70, 70)).bg(Color::Rgb(16, 16, 16))
+                };
+                put(buf, x + i as u16, y + row as u16 * gap, &ch.to_string(), st);
+            }
+        }
+        let lvl = format!("Level {}", g.level);
+        put(buf, cx + chips_w - lvl.len() as u16, y + 2 * gap, &lvl, Style::default().fg(Color::Rgb(150, 150, 150)).bg(bg));
+        true
     }
 
     /// The status bar as text: score, power-ups, ships, bombs, crystals.

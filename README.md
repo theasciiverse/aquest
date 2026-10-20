@@ -86,6 +86,14 @@ over the 392x320 arena, fitted to the terminal with square pixels:
   striking colour; inside a sprite, the commonest colour as the
   background and the one that stands out most as dots.
 
+Under the field, the status bar shows the score in big digits, all seven
+power-ups by name (dim until you have one, then lit in its colour and
+draining as it runs out, blinking in its last three seconds), and your
+ships, bombs and crystals. It is three rows tall, five on tall terminals
+(45 rows and up), one on small ones. When you catch something, a banner
+in the field says what it is and what it does: "RAPID FIRE: hold fire to
+keep shooting", "EXTRA SHIP", "MINES CLEARED".
+
 A shrunk picture keeps the brightest pixel of each patch it covers, so
 one-pixel stars and shots never vanish. Once the terminal is big enough to
 give every game pixel its own colour (320 columns) the status bar,

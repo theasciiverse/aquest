@@ -102,8 +102,16 @@ da200840b1b030ad3693c8062069d1da87d1104b5ca8e160d551b3a934470a58  xquest.fnt
 - Downsampling keeps the brightest source pixel per terminal pixel, so
   stars and shots survive; the starfield shows fewer stars on small
   pictures (`set_stars`), or 400 stars crowd 5,000 pixels.
-- At full size (`tw >= 320`) the original pixel status bar is drawn;
-  below that, a text line with the power-ups in their icon colours.
+- At full size (320 columns) the original pixel status bar is drawn;
+  below that `draw_big_hud` (2026-10-20, David: the score row was far too
+  small, and he wanted to see which power-ups exist and which he got):
+  score in big 3x5 digits, all seven power-ups as named chips (dim, or lit
+  in the icon colour and draining from the length it was given, blinking
+  as the original's icons do), ships, bombs and gems named; 3 rows, 5 from
+  45 rows (`hud_rows`), the old one-line bar below 22 rows or 70 columns.
+  `watch_pickups` notices pickups from the HUD's side (a timer that jumps,
+  a shield of exactly 1 for cleared mines, a ship more) and shows a banner
+  with what it does; the game itself is not touched.
 - Menus and tables are terminal text: the comix font (`assets.comix`,
   loaded) is unreadable shrunk. Using it at full size is an open idea.
 
@@ -151,11 +159,11 @@ Read from xquest.pas, approved by David, done in both:
   ("tmux 3.6") was removed by hand after recording.
 - Website mockup: NEW! banner in `dev/mock-titles.toml`, cast in
   `casts/aquest.cast`, local Linux x86_64 build in
-  `dev-releases/aquest` (1.0.3-av.1; links libasound and libudev). The
+  `dev-releases/aquest` (1.0.4-av.1; links libasound and libudev). The
   mockup's `local_binary` looks in `games/<id>`, which this folder's
   capitals miss, hence the packaged release.
 - Release workflow `.github/workflows/release.yml`, on ASCII Wars!'
-  pattern. Tag `v1.0.3-av.1` (2026-10-20; `v1.0.0-av.1` and `v1.0.2-av.1` before it) pushed; its run was refused by
+  pattern. Tag `v1.0.4-av.1` (2026-10-20; earlier v1.0.0, v1.0.2, v1.0.3) pushed; its run was refused by
   the organisation's Actions billing, so no GitHub release yet (re-run it,
   or `workflow_dispatch` with the tag, once Actions runs again).
 - Repo: private at github.com/theasciiverse/aquest, branch `main`
