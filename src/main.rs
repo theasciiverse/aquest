@@ -1227,6 +1227,7 @@ impl App {
         // a power-up column: the 13x13 icon in 13 columns and 7 rows
         const COL: u16 = 13;
         let pu_w = PU_COUNT as u16 * (COL + 1) - 1;
+        // ship, bomb and crystal columns, each as wide as its label needs
         let right_w = 16 + 2 + 13 + 2 + 11;
         let score_w = (digits * 7).max(5 * 7);
         if score_w + 3 + pu_w + 3 + right_w + 2 > field.width {
@@ -1242,7 +1243,7 @@ impl App {
         put(buf, field.x + 1, y + 7, &lvl, dim);
 
         // the power-ups: the icon, its name chip under it
-        let rx = field.right() - right_w - 1;
+        let rx = field.right() - right_w - 3;
         let left = field.x + 1 + score_w + 3;
         let px = left + rx.saturating_sub(left + 3).saturating_sub(pu_w) / 2;
         for pu in 0..PU_COUNT {
@@ -1268,15 +1269,18 @@ impl App {
 
         // ships, bombs, crystals: icon over the count
         let rec = g.level_rec();
+        let ships = (g.lives - 1).max(0);
         let items = [
-            ((0, 32, 16, 13), 16, 7, (g.lives - 1).max(0).to_string()),
-            ((20, 32, 13, 13), 13, 7, g.bombs.to_string()),
-            ((40, 32, 11, 11), 11, 6, format!("{}/{}", rec.numcryst - g.num_crystals, rec.numcryst)),
+            ((0, 32, 16, 13), 16, 7, format!("{ships} {}", if ships == 1 { "ship" } else { "ships" })),
+            ((20, 32, 13, 13), 13, 7, format!("{} {}", g.bombs, if g.bombs == 1 { "bomb" } else { "bombs" })),
+            ((40, 32, 11, 11), 11, 6, format!("{}/{} gems", rec.numcryst - g.num_crystals, rec.numcryst)),
         ];
         let mut x = rx;
         for (src, cols, rows, val) in &items {
             self.icon(buf, *src, x, y + (7 - rows), *cols, *rows);
-            put(buf, x + cols.saturating_sub(val.len() as u16) / 2, y + 7, val, white);
+            // the label centred under the icon, spilling evenly if wider
+            let lx = (x + cols / 2).saturating_sub(val.len() as u16 / 2);
+            put(buf, lx, y + 7, val, white);
             x += cols + 2;
         }
         true
