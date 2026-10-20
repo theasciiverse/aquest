@@ -13,6 +13,10 @@ const SND: &[u8] = include_bytes!("../data/xquest.snd");
 const RATE: u32 = 11_025;
 const SOUNDS: usize = 25;
 const VOICES: usize = 8;
+/// The mix's master gain, over 128. xquest-sdl uses 350; AQuest plays 22%
+/// quieter (David, 2026-10-20: every effect a bit loud), which also leaves
+/// more headroom before loud moments clip.
+const GAIN: i32 = 273;
 
 struct Sample {
     data: Vec<u8>,
@@ -89,7 +93,7 @@ impl Iterator for Mixer {
                 v.pos += 1;
             }
         }
-        let mix = (mix * 350 / 128).clamp(-32768, 32767);
+        let mix = (mix * GAIN / 128).clamp(-32768, 32767);
         Some(mix as f32 / 32768.0)
     }
 }
