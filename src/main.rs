@@ -218,7 +218,21 @@ fn main() -> io::Result<()> {
     }
     icons.sprite(&a.ship_icon, 0, 32);
     icons.sprite(&a.smart_bomb_hud, 20, 32);
-    icons.sprite(&a.crystal_hud, 40, 32);
+    // the crystal is 11x11 where the others are 13x13: give it a 13x13
+    // tile in its own background grey (its commonest colour), so it lines
+    // up with them, its pixels untouched
+    let c = &a.crystal_hud;
+    let mut count = [0u32; 256];
+    for &p in &c.px {
+        count[p as usize] += 1;
+    }
+    let grey = (1..256).max_by_key(|&i| count[i]).unwrap_or(1);
+    for yy in 32..45 {
+        for xx in 40..53 {
+            icons.px[(yy * frame::W + xx) as usize] = a.palette[grey];
+        }
+    }
+    icons.sprite(c, 41, 33);
     let mut app = App {
         a,
         frame,
@@ -1228,7 +1242,7 @@ impl App {
         const COL: u16 = 13;
         let pu_w = PU_COUNT as u16 * (COL + 1) - 1;
         // ship, bomb and crystal columns, each as wide as its label needs
-        let right_w = 16 + 2 + 13 + 2 + 11;
+        let right_w = 16 + 2 + 13 + 2 + 13;
         let score_w = (digits * 7).max(5 * 7);
         if score_w + 3 + pu_w + 3 + right_w + 2 > field.width {
             return false;
@@ -1273,7 +1287,7 @@ impl App {
         let items = [
             ((0, 32, 16, 13), 16, 7, format!("{ships} {}", if ships == 1 { "ship" } else { "ships" })),
             ((20, 32, 13, 13), 13, 7, format!("{} {}", g.bombs, if g.bombs == 1 { "bomb" } else { "bombs" })),
-            ((40, 32, 11, 11), 11, 6, format!("{}/{} gems", rec.numcryst - g.num_crystals, rec.numcryst)),
+            ((40, 32, 13, 13), 13, 7, format!("{}/{} gems", rec.numcryst - g.num_crystals, rec.numcryst)),
         ];
         let mut x = rx;
         for (src, cols, rows, val) in &items {
