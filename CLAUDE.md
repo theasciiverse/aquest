@@ -76,7 +76,20 @@ da200840b1b030ad3693c8062069d1da87d1104b5ca8e160d551b3a934470a58  xquest.fnt
 - The camera scrolls as the original's does (David, 2026-10-20: "Always
   scroll like XQuest"), the 320x217 window scaled to fit with square
   pixels using the terminal's cell aspect.
-- Blocks and Braille, switchable with V (David's choice).
+- Blocks and Braille, switchable with V (David's choice), and since
+  2026-10-20 **Mixed**, the default, after David asked for a gradual move
+  to Braille as the screen shrinks and then for Braille's fidelity to be
+  used more. Mixed decides each cell by coverage of its 2x4 patch
+  (`mixed_cell`): empty is space; partly covered (a sprite edge on space)
+  is Braille dots in the brightest colour; fully covered is a half block,
+  or two-colour dots where two clearly different colours meet in a
+  pattern that is not a top/bottom split. From block scale 0.6 (about 200
+  columns) it is all half blocks (`BLOCKS_FROM`). Tried and dropped the
+  same day: choosing per cell by least colour error (averaged colours came
+  out murky, and coloured backgrounds flooded small sprites).
+- `--shot TICKS --size WxH` prints the built-in demo's frame at that tick
+  with colour escapes, no terminal: for comparing views on the same frame
+  (scratch `shot.py`-style tools turn it into a PNG).
 - Downsampling keeps the brightest source pixel per terminal pixel, so
   stars and shots survive; the starfield shows fewer stars on small
   pictures (`set_stars`), or 400 stars crowd 5,000 pixels.
@@ -123,8 +136,8 @@ Read from xquest.pas, approved by David, done in both:
 - id `aquest`, binary `aquest`, kind game, genre arcade;
   `hub/catalog/aquest.toml` and `.md` (2026-10-20).
 - Preview: `asciiverse/record-preview.sh` (100x30, the built-in demo,
-  levels 1 and 2 with the countdown, Braille from 18 s to 34 s; still at
-  41 s, the level 2 bonus window). About 16 MB:
+  levels 1 and 2 with the countdown, Mixed with Blocks from 18 s to 34 s;
+  still at 41 s, the level 2 bonus window). About 16 MB:
   the game redraws at 67 frames a second. The header's `term.version`
   ("tmux 3.6") was removed by hand after recording.
 - Website mockup: NEW! banner in `dev/mock-titles.toml`, cast in

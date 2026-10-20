@@ -59,9 +59,9 @@ dodge the mines and the Mucoids' many friends, and leave through the gate.
   B or X           smart bomb
   mouse            move to thrust, left fires, right bombs, middle brakes
   gamepad          stick or d-pad thrust, A fires, B bombs, X brakes
-  P pause   Esc quit the game   V blocks or Braille   M sound
+  P pause   Esc quit the game   V graphics   M sound
 
-  --braille, --blocks   how to draw (V switches while playing)
+  --mixed, --blocks, --braille   how to draw (V switches while playing)
   --demo           play the built-in demo, then exit
   --play FILE      play back a demo (xquest.dmo format), then exit
   --record FILE    record the next game to FILE
@@ -175,6 +175,9 @@ fn main() -> io::Result<()> {
     if has("--blocks") {
         settings.view = View::Blocks;
     }
+    if has("--mixed") {
+        settings.view = View::Mixed;
+    }
     if let Some(d) = value("--difficulty").and_then(|v| v.parse::<usize>().ok()) {
         settings.difficulty = d.min(4);
     }
@@ -196,26 +199,13 @@ fn main() -> io::Result<()> {
     let audio = Audio::new(has("--mute"), settings.sound);
     let a = Assets::load();
     let frame = Frame::new(&a);
-    let mut terminal = ratatui::init();
-    let kitty = supports_keyboard_enhancement().unwrap_or(false);
-    if kitty {
-        let flags = KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
-            | KeyboardEnhancementFlags::REPORT_EVENT_TYPES
-            | KeyboardEnhancementFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES;
-        execute!(io::stdout(), PushKeyboardEnhancementFlags(flags))?;
-    }
-    let _ = execute!(io::stdout(), EnableFocusChange, EnableMouseCapture);
-    let mut input = Input::new(kitty);
-    input.open_pad();
-    log::info!("start kitty_keyboard={kitty} pad={:?} audio={} settings={settings:?}", input.pad_name, audio.available());
-
     let mut app = App {
         a,
         frame,
         sf: Starfield::new(0),
         table: HiTable::load(),
         audio,
-        input,
+        input: Input::new(false),
         screen: Screen::Menu,
         sel: 0,
         game: None,
@@ -239,6 +229,25 @@ fn main() -> io::Result<()> {
         poured: 0,
         settings,
     };
+    if let Some(t) = value("--shot").and_then(|v| v.parse::<u32>().ok()) {
+        let (w, h) = value("--size").and_then(|v| v.split_once('x')).and_then(|(w, h)| Some((w.parse().ok()?, h.parse().ok()?))).unwrap_or((100, 30));
+        shot(&mut app, t, w, h);
+        return Ok(());
+    }
+
+    let mut terminal = ratatui::init();
+    let kitty = supports_keyboard_enhancement().unwrap_or(false);
+    if kitty {
+        let flags = KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
+            | KeyboardEnhancementFlags::REPORT_EVENT_TYPES
+            | KeyboardEnhancementFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES;
+        execute!(io::stdout(), PushKeyboardEnhancementFlags(flags))?;
+    }
+    let _ = execute!(io::stdout(), EnableFocusChange, EnableMouseCapture);
+    app.input.exact = kitty;
+    app.input.open_pad();
+    log::info!("start kitty_keyboard={kitty} pad={:?} audio={} settings={:?}", app.input.pad_name, app.audio.available(), app.settings);
+
     if let Some(d) = playback {
         app.start_playback(d);
     } else if app.record_now {
@@ -253,6 +262,38 @@ fn main() -> io::Result<()> {
     ratatui::restore();
     app.settings.save();
     result
+}
+
+/// `--shot TICKS [--size WxH]`, a developer's tool: the built-in demo after
+/// that many ticks, drawn into a WxH screen (cells twice as tall as wide)
+/// and printed with colour escapes, no terminal needed. Compares views on
+/// exactly the same frame.
+fn shot(app: &mut App, ticks: u32, w: u16, h: u16) {
+    app.aspect = 2.0;
+    if let Some(d) = Demo::parse(demo::BUILT_IN) {
+        app.start_playback(d);
+    }
+    let now = Instant::now();
+    for _ in 0..ticks {
+        app.tick(now);
+    }
+    let area = Rect::new(0, 0, w, h);
+    let mut buf = Buffer::empty(area);
+    app.draw(&mut buf, area);
+    let mut out = String::new();
+    for y in 0..h {
+        for x in 0..w {
+            let c = &buf[(x, y)];
+            for (code, col) in [(38, c.fg), (48, c.bg)] {
+                if let Color::Rgb(r, g, b) = col {
+                    out.push_str(&format!("\x1b[{code};2;{r};{g};{b}m"));
+                }
+            }
+            out.push_str(c.symbol());
+        }
+        out.push_str("\x1b[0m\n");
+    }
+    print!("{out}");
 }
 
 fn run(terminal: &mut ratatui::DefaultTerminal, app: &mut App) -> io::Result<()> {
@@ -512,7 +553,7 @@ impl App {
     }
 
     fn toggle_view(&mut self) {
-        self.settings.view = if self.settings.view == View::Blocks { View::Braille } else { View::Blocks };
+        self.settings.view = self.settings.view.next();
         log::info!("view {:?}", self.settings.view);
         self.settings.save();
     }
@@ -931,7 +972,7 @@ impl App {
                 Item::Fame => "Hall of Fame".into(),
                 Item::PlayDemo => "Play Demo".into(),
                 Item::RecordDemo => "Record Demo".into(),
-                Item::View => format!("Graphics  < {} >", if self.settings.view == View::Blocks { "Blocks" } else { "Braille" }),
+                Item::View => format!("Graphics  < {} >", self.settings.view.name()),
                 Item::Sound => format!("Sound  < {} >", if !self.audio.available() { "none" } else if self.settings.sound { "On" } else { "Off" }),
                 Item::Quit => "Quit".into(),
             };

@@ -122,6 +122,26 @@ impl HiTable {
 pub enum View {
     Blocks,
     Braille,
+    Mixed,
+}
+
+impl View {
+    pub fn name(self) -> &'static str {
+        match self {
+            View::Blocks => "Blocks",
+            View::Braille => "Braille",
+            View::Mixed => "Mixed",
+        }
+    }
+
+    /// The next one, for the V key and the menu.
+    pub fn next(self) -> View {
+        match self {
+            View::Blocks => View::Braille,
+            View::Braille => View::Mixed,
+            View::Mixed => View::Blocks,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -133,13 +153,19 @@ pub struct Settings {
 
 impl Settings {
     pub fn load() -> Settings {
-        let mut s = Settings { difficulty: 2, view: View::Blocks, sound: true };
+        let mut s = Settings { difficulty: 2, view: View::Mixed, sound: true };
         let Some(text) = file("aquest.cfg").and_then(|p| std::fs::read_to_string(p).ok()) else { return s };
         for line in text.lines() {
             let mut it = line.split_whitespace();
             match (it.next(), it.next()) {
                 (Some("difficulty"), Some(v)) => s.difficulty = v.parse::<usize>().unwrap_or(2).min(4),
-                (Some("view"), Some(v)) => s.view = if v == "braille" { View::Braille } else { View::Blocks },
+                (Some("view"), Some(v)) => {
+                    s.view = match v {
+                        "braille" => View::Braille,
+                        "blocks" => View::Blocks,
+                        _ => View::Mixed,
+                    }
+                }
                 (Some("sound"), Some(v)) => s.sound = v != "off",
                 _ => {}
             }
@@ -149,7 +175,7 @@ impl Settings {
 
     pub fn save(&self) {
         let Some(p) = file("aquest.cfg") else { return };
-        let view = if self.view == View::Braille { "braille" } else { "blocks" };
+        let view = self.view.name().to_lowercase();
         let text = format!("difficulty {}\nview {view}\nsound {}\n", self.difficulty, if self.sound { "on" } else { "off" });
         if let Err(e) = std::fs::write(&p, text) {
             log::warn!("could not save settings to {}: {e}", p.display());

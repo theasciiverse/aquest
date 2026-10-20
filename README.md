@@ -45,7 +45,7 @@ as fast as you fly.
 | Smart bomb | B or X | right button | B |
 | Pause | P | | Start |
 | Quit the game | Esc, then Y | | |
-| Blocks or Braille | V | | |
+| Graphics: Mixed, Blocks or Braille | V | | |
 | Sound on or off | M | | |
 
 Best in a terminal that reports key releases (the kitty keyboard
@@ -73,20 +73,26 @@ bounce on Timid too.
 The picture is the original 320x240 screen, a 320x217 window scrolling
 over the 392x320 arena, fitted to the terminal with square pixels:
 
-- **Blocks** (the default): half-block cells, two pixels a cell, each in
-  its own colour. Mark's palette and sprites as they were.
-- **Braille**: 2x4 dots a cell in one colour, four times the detail.
+- **Mixed** (the default): Braille's four-times detail with colour,
+  decided cell by cell. Where a sprite's edge meets space the cell is
+  Braille dots in the sprite's brightest colour; inside a sprite it is a
+  half block, or two-colour dots where two colours meet. The smaller the
+  picture, the more of it is Braille; from about 200 columns it is all
+  half blocks, which resolve the sprites by then and look more solid.
+- **Blocks**: half-block cells, two pixels a cell, each in its own
+  colour. Mark's palette and sprites as they were.
+- **Braille**: 2x4 dots a cell in one colour.
 
 A shrunk picture keeps the brightest pixel of each patch it covers, so
 one-pixel stars and shots never vanish. Once the terminal is big enough to
-show the screen at full size (320 columns in Blocks, 160 in Braille) the
-original status bar appears in Mark's own font; smaller, it is a line of
-text.
+show the screen at full size (320 columns in Blocks, 160 in Braille and
+Mixed) the original status bar appears in Mark's own font; smaller, it is
+a line of text.
 
 ## Options
 
 ```
---braille, --blocks   how to draw (V switches while playing)
+--mixed, --blocks, --braille   how to draw (V switches while playing)
 --demo           play the built-in demo, then exit
 --play FILE      play back a demo (xquest.dmo format), then exit
 --record FILE    record the next game to FILE
@@ -133,7 +139,7 @@ change, and a snapshot of the game twice a second.
 Everything that happens in the game is xquest-sdl's. What is new is the
 terminal around it:
 
-- The picture is fitted to the terminal in Blocks or Braille (`view.rs`);
+- The picture is fitted to the terminal in Mixed, Blocks or Braille (`view.rs`);
   the menus, Game Over box and Hall of Fame are text over the starfield
   instead of Mark's comix font, which is too fine to read shrunk.
 - A text status line under smaller pictures, the countdown as text in
