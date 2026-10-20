@@ -81,13 +81,17 @@ over the 392x320 arena, fitted to the terminal with square pixels:
   half blocks, which resolve the sprites by then and look more solid.
 - **Blocks**: half-block cells, two pixels a cell, each in its own
   colour. Mark's palette and sprites as they were.
-- **Braille**: 2x4 dots a cell in one colour.
+- **Braille**: every cell Braille, at the full 2x4 detail, in two
+  colours: over space, the lit samples as dots on black in their most
+  striking colour; inside a sprite, the commonest colour as the
+  background and the one that stands out most as dots.
 
 A shrunk picture keeps the brightest pixel of each patch it covers, so
 one-pixel stars and shots never vanish. Once the terminal is big enough to
-show the screen at full size (320 columns in Blocks, 160 in Braille and
-Mixed) the original status bar appears in Mark's own font; smaller, it is
-a line of text.
+give every game pixel its own colour (320 columns) the status bar,
+countdown and bonus window are Mark's own pixels; smaller, in every view,
+they are terminal text, since his metallic lettering needs more than two
+colours a cell.
 
 ## Options
 

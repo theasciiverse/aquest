@@ -986,8 +986,13 @@ impl App {
     }
 
     /// Whether the picture fits at full size, with the original status bar.
+    /// Whether Mark's own pixel status bar, countdown and bonus window are
+    /// drawn: only where every game pixel gets its own colour, a 1:1 picture
+    /// in half blocks (320 columns), whatever the view. His metallic 8-pixel
+    /// lettering has about five greys a letter, which Braille's two colours
+    /// a cell cannot carry; smaller, they are clean terminal text.
     fn full_size(&self, area: Rect) -> bool {
-        view::place(area, frame::W, frame::H, self.settings.view, self.aspect).tw as i32 >= frame::W
+        view::place(area, frame::W, frame::H, View::Blocks, self.aspect).tw as i32 >= frame::W
     }
 
     /// The game; returns the field's cells.
@@ -995,14 +1000,14 @@ impl App {
         let v = self.settings.view;
         let whole = view::place(area, frame::W, frame::H, v, self.aspect);
         self.set_stars(whole.tw, whole.th);
-        let full = whole.tw as i32 >= frame::W;
+        let full = self.full_size(area);
         let Some(g) = &self.game else { return area };
         self.frame.game(&self.a, g, &self.sf, full);
         if let (Some(b), true) = (&self.bonus_view, full) {
             self.frame.bonus_window(&self.a, b);
         }
         // the original status bar once the picture is full size
-        let (field, hud_row) = if whole.tw as i32 >= frame::W {
+        let (field, hud_row) = if full {
             view::draw(buf, &self.frame, (0, 0, frame::W, frame::H), &whole, v);
             (whole.cells, None)
         } else {

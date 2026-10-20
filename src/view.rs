@@ -2,7 +2,8 @@
 //!
 //! - Blocks: half-block cells (`▀`), two pixels a cell, each its own
 //!   colour. The original's look.
-//! - Braille: 2x4 dots a cell in one colour, four times the detail.
+//! - Braille: every cell Braille, at the full 2x4 detail, in two colours
+//!   (see `mixed_cell`), so lettering, shading and colours show.
 //! - Mixed (the default): Braille's detail with colour. Sprite edges are
 //!   dots in the cell's brightest colour, sprite insides half blocks or
 //!   two-colour dots, so the smaller the picture, the more of it is
@@ -97,15 +98,6 @@ enum Cell {
     Dots(u32, Rgb, Rgb),
 }
 
-fn mean(cs: &[Rgb]) -> Rgb {
-    if cs.is_empty() {
-        return [0; 3];
-    }
-    let n = cs.len() as u32;
-    let sum = |i: usize| (cs.iter().map(|c| c[i] as u32).sum::<u32>() / n) as u8;
-    [sum(0), sum(1), sum(2)]
-}
-
 /// A patch as a half block: the brightest of each half, as Blocks does it.
 fn half_cell(p: &[[Rgb; 4]; 2]) -> Cell {
     let top = brightest(&[p[0][0], p[0][1], p[1][0], p[1][1]]);
@@ -113,55 +105,78 @@ fn half_cell(p: &[[Rgb; 4]; 2]) -> Cell {
     if top == bot { Cell::Solid(top) } else { Cell::Half(top, bot) }
 }
 
-/// One cell's 2x4 patch (`p[x][y]`), drawn by how much of it is covered:
+/// One cell's 2x4 patch (`p[x][y]`) in at most two colours.
 ///
-/// - nothing: space;
-/// - partly, a sprite's edge against space: Braille dots on black in the
-///   patch's brightest colour, the full 2x4 detail;
-/// - wholly, inside a sprite: a half block (the brightest of each half),
-///   or, where the patch holds an edge between two clearly different
-///   colours, Braille dots of the brighter over the other.
+/// The background is the colour covering most of the cell (space's black,
+/// a window's grey), since a background floods the whole cell, gaps
+/// included. The dots are the colour that stands out most from it, by how
+/// far it is and how much of it there is (a crystal's cyan, a letter's
+/// highlight). Every other sample joins whichever of the two it is nearer:
+/// a letter's dark shadow melts into the grey window, a crystal's blue
+/// edge joins its cyan outline. So a star is a white dot on black and a
+/// sprite's edge is its outline in dots, at the full 2x4 detail.
 ///
-/// Small pictures are nearly all edges, so they come out mostly Braille;
-/// the bigger the picture, the more cells are inside sprites and the more
-/// it is blocks in full colour.
-fn mixed_cell(p: &[[Rgb; 4]; 2]) -> Cell {
+/// With `blocks` (Mixed), a cell in one colour, or two split top and
+/// bottom, is a half block, which shows it more solidly. Small pictures are
+/// mostly edges, so mostly Braille; bigger ones have more insides, so more
+/// blocks.
+fn mixed_cell(p: &[[Rgb; 4]; 2], blocks: bool) -> Cell {
     // dot bits by (column, row), as Unicode lays them out
     const BIT: [[u32; 4]; 2] = [[0x01, 0x02, 0x04, 0x40], [0x08, 0x10, 0x20, 0x80]];
-    let at = |i: usize| p[i / 4][i % 4];
+    const TOP: u32 = 0x1B;
+    let at = |i: usize| {
+        let c = p[i / 4][i % 4];
+        if dark(c) { [0; 3] } else { c }
+    };
     let bit = |i: usize| BIT[i / 4][i % 4];
-    let mut covered = 0;
-    let mut lit = Vec::with_capacity(8);
-    for i in 0..8 {
-        if !dark(at(i)) {
-            covered |= bit(i);
-            lit.push(at(i));
-        }
-    }
-    if covered == 0 {
+
+    // the lit colours of the patch: (first, brightest, how many), close
+    // colours counted as one; space (black) is counted apart
+    let n_dark = (0..8).filter(|&i| at(i) == [0; 3]).count() as u32;
+    if n_dark == 8 {
         return Cell::Solid([0; 3]);
     }
-    if covered != 0xFF {
-        return Cell::Dots(covered, brightest(&lit), [0; 3]);
-    }
-
-    // the two colours of the patch: split at the midpoint of its brightness
-    let (lo, hi) = (lit.iter().map(|&c| lum(c)).min().unwrap_or(0), lit.iter().map(|&c| lum(c)).max().unwrap_or(0));
-    let mid = (lo + hi) / 2;
-    let mut bits = 0;
-    let (mut ina, mut inb) = (Vec::new(), Vec::new());
+    let mut groups: Vec<(Rgb, Rgb, u32)> = Vec::new();
     for i in 0..8 {
-        if lum(at(i)) > mid {
-            bits |= bit(i);
-            ina.push(at(i));
-        } else {
-            inb.push(at(i));
+        let c = at(i);
+        if c == [0; 3] {
+            continue;
+        }
+        match groups.iter_mut().find(|g| dist(g.0, c) < SAME) {
+            Some(g) => {
+                g.2 += 1;
+                if lum(c) > lum(g.1) {
+                    g.1 = c;
+                }
+            }
+            None => groups.push((c, c, 1)),
         }
     }
-    let (a, b) = (brightest(&ina), mean(&inb));
-    // one colour, or split top and bottom: a block shows it solidly
-    let is_half = bits == (BIT[0][0] | BIT[0][1] | BIT[1][0] | BIT[1][1]) || bits == (BIT[0][2] | BIT[0][3] | BIT[1][2] | BIT[1][3]);
-    if ina.is_empty() || inb.is_empty() || dist(a, b) < SAME || is_half {
+    // over space (two or more dark samples) the background is black and
+    // every lit sample a dot, so outlines stay exact and thin parts thin;
+    // inside a sprite, the most common colour, the darker on a tie
+    let over_space = n_dark >= 2;
+    if n_dark > 0 && !over_space {
+        groups.push(([0; 3], [0; 3], n_dark));
+    }
+    let space = ([0u8; 3], [0u8; 3], n_dark);
+    let bg = if over_space { space } else { *groups.iter().max_by_key(|g| (g.2, std::cmp::Reverse(lum(g.1)))).unwrap() };
+    let Some(fg) = groups.iter().filter(|g| g.0 != bg.0).max_by_key(|g| g.2 as u64 * dist(g.1, bg.1) as u64).copied() else {
+        return if blocks { half_cell(p) } else { Cell::Solid(bg.1) };
+    };
+    let (a, b) = (fg.1, bg.1);
+    let mut bits = 0;
+    for i in 0..8 {
+        let c = at(i);
+        let lit = if over_space { c != [0; 3] } else { dist(c, bg.0) >= SAME && dist(c, a) <= dist(c, b) };
+        if lit {
+            bits |= bit(i);
+        }
+    }
+    if bits == 0 {
+        return if blocks { half_cell(p) } else { Cell::Solid(b) };
+    }
+    if blocks && !over_space && (bits == TOP || bits == 0xFF & !TOP) {
         return half_cell(p);
     }
     Cell::Dots(bits, a, b)
@@ -178,18 +193,21 @@ mod tests {
     #[test]
     fn mixed_cells_follow_coverage() {
         // empty: space
-        assert!(matches!(mixed_cell(&[[K; 4]; 2]), Cell::Solid(c) if c == K));
+        assert!(matches!(mixed_cell(&[[K; 4]; 2], true), Cell::Solid(c) if c == K));
         // a sprite's edge: dots on black, in the brightest colour
         let edge = [[CYAN, BLUE, K, K], [K, K, K, K]];
-        assert!(matches!(mixed_cell(&edge), Cell::Dots(0x03, c, b) if c == CYAN && b == K));
+        assert!(matches!(mixed_cell(&edge, true), Cell::Dots(0x03, c, b) if c == CYAN && b == K));
         // inside, one colour: a block
-        assert!(matches!(mixed_cell(&[[BLUE; 4]; 2]), Cell::Solid(c) if c == BLUE));
+        assert!(matches!(mixed_cell(&[[BLUE; 4]; 2], true), Cell::Solid(c) if c == BLUE));
         // inside, two colours in a diagonal: dots of the brighter over the other
         let diag = [[CYAN, BLUE, CYAN, BLUE], [BLUE, CYAN, BLUE, CYAN]];
-        assert!(matches!(mixed_cell(&diag), Cell::Dots(_, c, b) if c == CYAN && b == BLUE));
+        assert!(matches!(mixed_cell(&diag, true), Cell::Dots(_, c, b) if c == CYAN && b == BLUE));
         // inside, split top and bottom: a half block
         let half = [[CYAN, CYAN, BLUE, BLUE], [CYAN, CYAN, BLUE, BLUE]];
-        assert!(matches!(mixed_cell(&half), Cell::Half(t, b) if t == CYAN && b == BLUE));
+        assert!(matches!(mixed_cell(&half, true), Cell::Half(t, b) if t == CYAN && b == BLUE));
+        // the Braille view keeps it in dots, brighter over darker
+        assert!(matches!(mixed_cell(&half, false), Cell::Dots(0x1B, c, b) if c == CYAN && b == BLUE));
+        assert!(matches!(mixed_cell(&[[BLUE; 4]; 2], false), Cell::Solid(c) if c == BLUE));
     }
 }
 
@@ -238,6 +256,33 @@ impl<'a> Sampler<'a> {
     }
 }
 
+/// Each cell of `r` from its 2x4 patch, drawn the way `how` decides.
+fn draw_cells(buf: &mut Buffer, s: &Sampler, r: Rect, how: impl Fn(&[[Rgb; 4]; 2]) -> Cell) {
+    let black = Color::Rgb(0, 0, 0);
+    for cy in 0..r.height {
+        for cx in 0..r.width {
+            let mut patch = [[[0u8; 3]; 4]; 2];
+            for (x, col) in patch.iter_mut().enumerate() {
+                for (y, c) in col.iter_mut().enumerate() {
+                    *c = s.at(cx as usize * 2 + x, cy as usize * 4 + y);
+                }
+            }
+            let cell = &mut buf[(r.x + cx, r.y + cy)];
+            match how(&patch) {
+                Cell::Solid(c) => {
+                    cell.set_char(' ').set_fg(black).set_bg(rgb(c));
+                }
+                Cell::Half(t, b) => {
+                    cell.set_char('▀').set_fg(rgb(t)).set_bg(rgb(b));
+                }
+                Cell::Dots(bits, fg, bg) => {
+                    cell.set_char(char::from_u32(0x2800 + bits).unwrap_or(' ')).set_fg(rgb(fg)).set_bg(rgb(bg));
+                }
+            }
+        }
+    }
+}
+
 /// Draw `src` (x, y, w, h of the frame) into `p`.
 pub fn draw(buf: &mut Buffer, f: &Frame, src: (i32, i32, i32, i32), p: &Placed, v: View) {
     let s = Sampler::new(f, src, p.tw, p.th);
@@ -260,55 +305,8 @@ pub fn draw(buf: &mut Buffer, f: &Frame, src: (i32, i32, i32, i32), p: &Placed, 
         }
         View::Mixed => {
             let all_blocks = p.tw as f32 / 2.0 / src.2 as f32 >= BLOCKS_FROM;
-            for cy in 0..r.height {
-                for cx in 0..r.width {
-                    let mut patch = [[[0u8; 3]; 4]; 2];
-                    for (x, col) in patch.iter_mut().enumerate() {
-                        for (y, c) in col.iter_mut().enumerate() {
-                            *c = s.at(cx as usize * 2 + x, cy as usize * 4 + y);
-                        }
-                    }
-                    let cell = &mut buf[(r.x + cx, r.y + cy)];
-                    let how = if all_blocks { half_cell(&patch) } else { mixed_cell(&patch) };
-                    match how {
-                        Cell::Solid(c) => {
-                            cell.set_char(' ').set_fg(black).set_bg(rgb(c));
-                        }
-                        Cell::Half(t, b) => {
-                            cell.set_char('▀').set_fg(rgb(t)).set_bg(rgb(b));
-                        }
-                        Cell::Dots(bits, fg, bg) => {
-                            cell.set_char(char::from_u32(0x2800 + bits).unwrap_or(' ')).set_fg(rgb(fg)).set_bg(rgb(bg));
-                        }
-                    }
-                }
-            }
+            draw_cells(buf, &s, r, |patch| if all_blocks { half_cell(patch) } else { mixed_cell(patch, true) });
         }
-        View::Braille => {
-            // dot bits by (column, row), as Unicode lays them out
-            const BIT: [[u32; 4]; 2] = [[0x01, 0x02, 0x04, 0x40], [0x08, 0x10, 0x20, 0x80]];
-            for cy in 0..r.height {
-                for cx in 0..r.width {
-                    let mut bits = 0;
-                    let mut best = [0u8; 3];
-                    let mut bl = 0;
-                    for (dx, col) in BIT.iter().enumerate() {
-                        for (dy, &bit) in col.iter().enumerate() {
-                            let c = s.at(cx as usize * 2 + dx, cy as usize * 4 + dy);
-                            let l = lum(c);
-                            if l > 160 {
-                                bits |= bit;
-                            }
-                            if l > bl {
-                                bl = l;
-                                best = c;
-                            }
-                        }
-                    }
-                    let ch = char::from_u32(0x2800 + bits).unwrap_or(' ');
-                    buf[(r.x + cx, r.y + cy)].set_char(ch).set_fg(rgb(best)).set_bg(black);
-                }
-            }
-        }
+        View::Braille => draw_cells(buf, &s, r, |patch| mixed_cell(patch, false)),
     }
 }

@@ -87,6 +87,15 @@ da200840b1b030ad3693c8062069d1da87d1104b5ca8e160d551b3a934470a58  xquest.fnt
   columns) it is all half blocks (`BLOCKS_FROM`). Tried and dropped the
   same day: choosing per cell by least colour error (averaged colours came
   out murky, and coloured backgrounds flooded small sprites).
+- Braille got the same two-colour cells (2026-10-20, after David's
+  screenshot of a grey field of dots where the bonus window was): over
+  space (two or more dark samples) black background, every lit sample a
+  dot, in the lit colour with the most count x contrast; inside a sprite,
+  the commonest colour as background and the most striking as dots, the
+  rest joining the nearer. Mixed is the same plus half blocks where they
+  fit. Mark's pixel status bar, countdown and bonus window only at 1:1
+  half blocks (320 columns) in every view (`full_size`): his lettering
+  has about five greys a letter and broke up in two-colour cells.
 - `--shot TICKS --size WxH` prints the built-in demo's frame at that tick
   with colour escapes, no terminal: for comparing views on the same frame
   (scratch `shot.py`-style tools turn it into a PNG).
@@ -142,11 +151,11 @@ Read from xquest.pas, approved by David, done in both:
   ("tmux 3.6") was removed by hand after recording.
 - Website mockup: NEW! banner in `dev/mock-titles.toml`, cast in
   `casts/aquest.cast`, local Linux x86_64 build in
-  `dev-releases/aquest` (1.0.2-av.1; links libasound and libudev). The
+  `dev-releases/aquest` (1.0.3-av.1; links libasound and libudev). The
   mockup's `local_binary` looks in `games/<id>`, which this folder's
   capitals miss, hence the packaged release.
 - Release workflow `.github/workflows/release.yml`, on ASCII Wars!'
-  pattern. Tag `v1.0.2-av.1` (2026-10-20; `v1.0.0-av.1` before Mixed) pushed; its run was refused by
+  pattern. Tag `v1.0.3-av.1` (2026-10-20; `v1.0.0-av.1` and `v1.0.2-av.1` before it) pushed; its run was refused by
   the organisation's Actions billing, so no GitHub release yet (re-run it,
   or `workflow_dispatch` with the tag, once Actions runs again).
 - Repo: private at github.com/theasciiverse/aquest, branch `main`
