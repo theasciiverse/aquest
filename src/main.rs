@@ -149,6 +149,10 @@ struct App {
     seen_lives: i32,
     /// The pickup banner: title, what it does, colour, ticks left.
     banner: Option<(String, &'static str, Rgb, u32)>,
+    /// Mark's status bar icons, drawn once: the power-ups lit in the top
+    /// row (x = 16 each), unlit in the second (y = 16), then the ship,
+    /// bomb and crystal (y = 32, x = 0, 20, 40).
+    icons: Frame,
 }
 
 fn main() -> io::Result<()> {
@@ -206,6 +210,15 @@ fn main() -> io::Result<()> {
     let audio = Audio::new(has("--mute"), settings.sound);
     let a = Assets::load();
     let frame = Frame::new(&a);
+    let mut icons = Frame::new(&a);
+    icons.clear();
+    for (i, s) in a.powerup_hud.iter().enumerate() {
+        icons.sprite(s, i as i32 * 16, 0);
+        icons.sprite_dim(s, i as i32 * 16, 16, 0.55);
+    }
+    icons.sprite(&a.ship_icon, 0, 32);
+    icons.sprite(&a.smart_bomb_hud, 20, 32);
+    icons.sprite(&a.crystal_hud, 40, 32);
     let mut app = App {
         a,
         frame,
@@ -238,6 +251,7 @@ fn main() -> io::Result<()> {
         pu_full: [1; PU_COUNT],
         seen_lives: 0,
         banner: None,
+        icons,
         settings,
     };
     if let Some(t) = value("--shot").and_then(|v| v.parse::<u32>().ok()) {
@@ -1141,7 +1155,10 @@ impl App {
         self.px_per_cell = (frame::W as f32 / field.width as f32, frame::HUD_Y as f32 / field.height as f32);
         if let Some(y) = hud_row {
             let rows = self.hud_rows(area);
-            if rows > 1 && self.draw_big_hud(buf, field, y, rows == 5) {
+            // the icon bar spans the terminal; the others sit under the field
+            let wide = Rect { x: area.x, width: area.width, ..field };
+            if rows == 8 && self.draw_icon_hud(buf, wide, y) {
+            } else if rows > 1 && self.draw_big_hud(buf, field, y, rows >= 5) {
             } else {
                 self.draw_hud(buf, field, y);
             }
@@ -1172,22 +1189,104 @@ impl App {
         field
     }
 
-    /// The status bar's rows: five on tall terminals, three where there is
-    /// room, else one.
+    /// The status bar's rows: eight with Mark's icons on big terminals,
+    /// five or three with big digits and name chips, else one. Each only
+    /// where it fits: the icon bar across the terminal, the others under
+    /// the field, whose width depends on the rows left for it.
     fn hud_rows(&self, area: Rect) -> u16 {
-        if area.height >= 45 && area.width >= 110 {
+        let field_w = |rows: u16| view::place(Rect { height: area.height.saturating_sub(rows), ..area }, frame::W, frame::HUD_Y, self.settings.view, self.aspect).cells.width;
+        // widths for a six-digit score
+        if area.height >= 48 && area.width >= 6 * 7 + 3 + 97 + 3 + 44 + 2 {
+            8
+        } else if area.height >= 45 && field_w(5) >= 6 * 7 + 2 + 35 + 2 + 12 + 2 {
             5
-        } else if area.height >= 22 && area.width >= 70 {
+        } else if area.height >= 22 && field_w(3) >= 6 * 4 + 2 + 35 + 2 + 12 + 2 {
             3
         } else {
             1
         }
     }
 
-    /// The status bar in three rows: the score in big digits, all seven
+    /// One of Mark's icons from `icons` into a cols x rows cell box, in
+    /// half blocks at a pixel a half cell, whatever the view: his icons are
+    /// tiny pixel art in five or six colours, which only read when every
+    /// pixel keeps its own (two-colour Braille cells turned them to mush).
+    fn icon(&self, buf: &mut Buffer, src: (i32, i32, i32, i32), x: u16, y: u16, cols: u16, rows: u16) {
+        let p = view::Placed { cells: Rect::new(x, y, cols, rows), tw: cols, th: rows * 2 };
+        view::draw(buf, &self.icons, src, &p, View::Blocks);
+    }
+
+    /// The eight-row status bar with Mark's icons, across the whole
+    /// terminal: the score and level on the left, the seven power-ups as
+    /// icons over their name chips, and the ship, bomb and crystal icons
+    /// over their counts. False if too narrow.
+    fn draw_icon_hud(&self, buf: &mut Buffer, field: Rect, y: u16) -> bool {
+        let Some(g) = &self.game else { return false };
+        let score = g.score + self.poured;
+        let digits = score.max(0).to_string().len() as u16;
+        // a power-up column: the 13x13 icon in 13 columns and 7 rows
+        const COL: u16 = 13;
+        let pu_w = PU_COUNT as u16 * (COL + 1) - 1;
+        let right_w = 16 + 2 + 13 + 2 + 11;
+        let score_w = (digits * 7).max(5 * 7);
+        if score_w + 3 + pu_w + 3 + right_w + 2 > field.width {
+            return false;
+        }
+        let bg = Color::Rgb(8, 8, 8);
+        buf.set_style(Rect::new(field.x, y, field.width, 8), Style::default().bg(bg));
+        let dim = Style::default().fg(Color::Rgb(150, 150, 150)).bg(bg);
+        let white = Style::default().fg(Color::Rgb(240, 240, 240)).bg(bg).add_modifier(Modifier::BOLD);
+
+        put_big(buf, field.x + 1, y + 1, score, true, Style::default().fg(Color::Rgb(240, 240, 240)).bg(bg));
+        let lvl = format!("Level {}", g.level);
+        put(buf, field.x + 1, y + 7, &lvl, dim);
+
+        // the power-ups: the icon, its name chip under it
+        let rx = field.right() - right_w - 1;
+        let left = field.x + 1 + score_w + 3;
+        let px = left + rx.saturating_sub(left + 3).saturating_sub(pu_w) / 2;
+        for pu in 0..PU_COUNT {
+            let x = px + pu as u16 * (COL + 1);
+            let t = g.powerup_timer[pu];
+            let lit = t > 0 && frame::powerup_shown(t);
+            let src = (pu as i32 * 16, if lit { 0 } else { 16 }, 13, 13);
+            self.icon(buf, src, x, y, 13, 7);
+            let c = frame::main_colour(&self.a, &self.a.powerup_hud[pu]);
+            let label = format!("{:^w$}", PU_INFO[pu].0, w = COL as usize);
+            let filled = if t > 0 { ((t as f32 / self.pu_full[pu] as f32) * COL as f32).ceil() as usize } else { 0 };
+            for (i, ch) in label.chars().enumerate() {
+                let st = if lit && i < filled {
+                    Style::default().fg(Color::Rgb(0, 0, 0)).bg(rgb(c)).add_modifier(Modifier::BOLD)
+                } else if lit {
+                    Style::default().fg(rgb(c)).bg(Color::Rgb(30, 30, 30)).add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(Color::Rgb(70, 70, 70)).bg(Color::Rgb(16, 16, 16))
+                };
+                put(buf, x + i as u16, y + 7, &ch.to_string(), st);
+            }
+        }
+
+        // ships, bombs, crystals: icon over the count
+        let rec = g.level_rec();
+        let items = [
+            ((0, 32, 16, 13), 16, 7, (g.lives - 1).max(0).to_string()),
+            ((20, 32, 13, 13), 13, 7, g.bombs.to_string()),
+            ((40, 32, 11, 11), 11, 6, format!("{}/{}", rec.numcryst - g.num_crystals, rec.numcryst)),
+        ];
+        let mut x = rx;
+        for (src, cols, rows, val) in &items {
+            self.icon(buf, *src, x, y + (7 - rows), *cols, *rows);
+            put(buf, x + cols.saturating_sub(val.len() as u16) / 2, y + 7, val, white);
+            x += cols + 2;
+        }
+        true
+    }
+
+    /// The status bar in three or five rows: the score in big digits, all seven
     /// power-ups as chips (lit and draining while active), and ships, bombs
     /// and crystals named. False if the field is too narrow for it.
     fn draw_big_hud(&self, buf: &mut Buffer, field: Rect, y: u16, tall: bool) -> bool {
+
         // tall: five rows, the lines two apart
         let (h, gap) = if tall { (5, 2) } else { (3, 1) };
         let Some(g) = &self.game else { return false };

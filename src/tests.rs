@@ -46,3 +46,5 @@ fn speeds_and_extra_ships_follow_xquest_pas() {
     g.time_on_level = 30 * 67;
     assert_eq!(g.level_bonus(), (30, 0));
 }
+
+

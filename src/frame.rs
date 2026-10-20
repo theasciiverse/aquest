@@ -73,6 +73,21 @@ impl Frame {
         self.blit(s, x, y, 0, H);
     }
 
+    /// A sprite in grey at `k` of its brightness, for an unlit icon.
+    pub fn sprite_dim(&mut self, s: &Sprite, x: i32, y: i32, k: f32) {
+        for row in 0..s.h {
+            for col in 0..s.w {
+                let (dx, dy) = (x + col, y + row);
+                let p = s.at(col, row);
+                if p != 0 && (0..W).contains(&dx) && (0..H).contains(&dy) {
+                    let c = self.pal[p as usize];
+                    let grey = ((c[0] as f32 * 0.3 + c[1] as f32 * 0.59 + c[2] as f32 * 0.11) * k) as u8;
+                    self.px[(dy * W + dx) as usize] = [grey; 3];
+                }
+            }
+        }
+    }
+
     /// Twice as tall, as the title banner is drawn.
     pub fn sprite_2xv(&mut self, s: &Sprite, x: i32, y: i32) {
         for row in 0..s.h {

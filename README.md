@@ -90,7 +90,10 @@ Under the field, the status bar shows the score in big digits, all seven
 power-ups by name (dim until you have one, then lit in its colour and
 draining as it runs out, blinking in its last three seconds), and your
 ships, bombs and crystals. It is three rows tall, five on tall terminals
-(45 rows and up), one on small ones. When you catch something, a banner
+(45 rows and up), one on small ones; on big terminals (48 rows and about
+190 columns) it is eight rows across the whole width, with Mark's own
+power-up, ship, bomb and crystal icons drawn pixel for pixel, the
+power-ups grey until you have them. When you catch something, a banner
 in the field says what it is and what it does: "RAPID FIRE: hold fire to
 keep shooting", "EXTRA SHIP", "MINES CLEARED".
 

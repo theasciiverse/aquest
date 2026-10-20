@@ -109,6 +109,13 @@ da200840b1b030ad3693c8062069d1da87d1104b5ca8e160d551b3a934470a58  xquest.fnt
   in the icon colour and draining from the length it was given, blinking
   as the original's icons do), ships, bombs and gems named; 3 rows, 5 from
   45 rows (`hud_rows`), the old one-line bar below 22 rows or 70 columns.
+  From 48 rows and about 190 columns, `draw_icon_hud`: eight rows across
+  the terminal with Mark's HUD icons (13x13 power-ups, ship, bomb,
+  crystal) in half blocks at a pixel a half cell, unlit ones in grey at
+  55% (David asked for the graphics in the thick bar). Two-colour Braille
+  turned these five-or-six-colour icons to mush, so they are half blocks
+  in every view. `hud_rows` only reserves rows the field is wide enough
+  for.
   `watch_pickups` notices pickups from the HUD's side (a timer that jumps,
   a shield of exactly 1 for cleared mines, a ship more) and shows a banner
   with what it does; the game itself is not touched.
@@ -159,11 +166,11 @@ Read from xquest.pas, approved by David, done in both:
   ("tmux 3.6") was removed by hand after recording.
 - Website mockup: NEW! banner in `dev/mock-titles.toml`, cast in
   `casts/aquest.cast`, local Linux x86_64 build in
-  `dev-releases/aquest` (1.0.4-av.1; links libasound and libudev). The
+  `dev-releases/aquest` (1.0.5-av.1; links libasound and libudev). The
   mockup's `local_binary` looks in `games/<id>`, which this folder's
   capitals miss, hence the packaged release.
 - Release workflow `.github/workflows/release.yml`, on ASCII Wars!'
-  pattern. Tag `v1.0.4-av.1` (2026-10-20; earlier v1.0.0, v1.0.2, v1.0.3) pushed; its run was refused by
+  pattern. Tag `v1.0.5-av.1` (2026-10-20; earlier v1.0.0, v1.0.2 to v1.0.4) pushed; its run was refused by
   the organisation's Actions billing, so no GitHub release yet (re-run it,
   or `workflow_dispatch` with the tag, once Actions runs again).
 - Repo: private at github.com/theasciiverse/aquest, branch `main`
