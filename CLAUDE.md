@@ -182,7 +182,7 @@ Read from xquest.pas, approved by David, done in both:
   mockup's `local_binary` looks in `games/<id>`, which this folder's
   capitals miss, hence the packaged release.
 - Release workflow `.github/workflows/release.yml`, on ASCII Wars!'
-  pattern. Tag `v1.0.7-av.1` (2026-10-20; earlier v1.0.0, v1.0.2 to v1.0.6) pushed; its run was refused by
+  pattern. Tag `v1.0.8-av.1` (2026-10-27; earlier v1.0.0, v1.0.2 to v1.0.7) pushed; its run was refused by
   the organisation's Actions billing, so no GitHub release yet (re-run it,
   or `workflow_dispatch` with the tag, once Actions runs again).
 - Repo: private at github.com/theasciiverse/aquest, branch `main`
