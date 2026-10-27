@@ -171,12 +171,14 @@ Read from xquest.pas, approved by David, done in both:
   `hub/catalog/aquest.toml` and `.md` (2026-10-20).
 - Preview: `asciiverse/record-preview.sh` (100x30, the built-in demo,
   levels 1 and 2 with the countdown, Mixed with Blocks from 18 s to 34 s;
-  still at 41 s, the level 2 bonus window). About 16 MB:
+  still at 41 s, the level 2 bonus window; re-recorded 2026-10-27 for the
+  line-character walls). About 16 MB:
   the game redraws at 67 frames a second. The header's `term.version`
   ("tmux 3.6") was removed by hand after recording.
 - Website mockup: NEW! banner in `dev/mock-titles.toml`, cast in
   `casts/aquest.cast`, local Linux x86_64 build in
-  `dev-releases/aquest` (1.0.7-av.1; links libasound and libudev). The
+  `dev-releases/aquest` (1.0.8-av.1, 2026-10-27; links libasound and
+  libudev). The
   mockup's `local_binary` looks in `games/<id>`, which this folder's
   capitals miss, hence the packaged release.
 - Release workflow `.github/workflows/release.yml`, on ASCII Wars!'
