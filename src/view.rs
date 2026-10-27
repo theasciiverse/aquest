@@ -283,6 +283,25 @@ fn draw_cells(buf: &mut Buffer, s: &Sampler, r: Rect, how: impl Fn(&[[Rgb; 4]; 2
     }
 }
 
+/// Whether drawing `src_w` frame pixels across into `p` puts Braille on the
+/// screen: always in Braille, in Mixed below `BLOCKS_FROM`.
+pub fn braille(p: &Placed, src_w: i32, v: View) -> bool {
+    match v {
+        View::Blocks => false,
+        View::Braille => true,
+        View::Mixed => (p.tw as f32 / 2.0 / src_w as f32) < BLOCKS_FROM,
+    }
+}
+
+/// The cell of `p` that frame pixel (x, y) of an `sw` x `sh` source falls
+/// in, the inverse of `Sampler`'s spans; outside the source it carries on
+/// past the edge, so callers clip whole cells.
+pub fn cell_at(p: &Placed, v: View, sw: i32, sh: i32, x: i32, y: i32) -> (i32, i32) {
+    let (cx, cy) = dots(v);
+    let dot = |q: i32, n: u16, len: i32| (q * n as i32 + n as i32 - 1).div_euclid(len);
+    (dot(x, p.tw, sw).div_euclid(cx as i32), dot(y, p.th, sh).div_euclid(cy as i32))
+}
+
 /// Draw `src` (x, y, w, h of the frame) into `p`.
 pub fn draw(buf: &mut Buffer, f: &Frame, src: (i32, i32, i32, i32), p: &Placed, v: View) {
     let s = Sampler::new(f, src, p.tw, p.th);

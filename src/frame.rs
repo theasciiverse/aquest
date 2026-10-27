@@ -145,37 +145,16 @@ impl Frame {
 
     /// The whole game screen. The countdown is drawn only `full` size: shrunk,
     /// its five-pixel digits are a smudge, and the terminal shows it as text.
-    pub fn game(&mut self, a: &Assets, g: &Game, sf: &Starfield, full: bool) {
+    /// With `pipes` the border, the gate and the enemy gates are left out:
+    /// `pipes.rs` draws them as line characters over the picture.
+    pub fn game(&mut self, a: &Assets, g: &Game, sf: &Starfield, full: bool, pipes: bool) {
         self.fill(0, HUD_Y, self.pal[0]);
         self.fill(HUD_Y, H, self.pal[1]);
         self.stars(sf, VIEWPORT_H);
 
-        // the border, a five-line pipe
-        const BCOLOR: [usize; 5] = [10, 15, 25, 15, 10];
-        for (i, &bc) in BCOLOR.iter().enumerate() {
-            let i = i as i32 + 1;
-            let c = self.pal[bc];
-            self.hline(10, g.gate_left_x, 10 - i, g, c);
-            self.hline(g.gate_right_x + a.gate_right.w, WORLD_W - 10, 10 - i, g, c);
-            self.hline(10, WORLD_W - 10, WORLD_H - 5 - i, g, c);
-            self.vline(10, WORLD_H - 9, 4 + i, g, c);
-            self.vline(10, WORLD_H - 9, WORLD_W - 11 + i, g, c);
+        if !pipes {
+            self.border(a, g);
         }
-        self.world(&a.gate_left, g.gate_left_x, 0, g);
-        self.world(&a.gate_right, g.gate_right_x, 0, g);
-        if !g.gate_open {
-            let c = self.pal[54];
-            self.hline(g.gate_left_x + a.gate_left.w, g.gate_right_x - 1, 7, g, c);
-        }
-        self.world(&a.corner[0], 0, 0, g);
-        self.world(&a.corner[1], WORLD_W - 10, 0, g);
-        self.world(&a.corner[2], WORLD_W - 10, WORLD_H - 10, g);
-        self.world(&a.corner[3], 0, WORLD_H - 10, g);
-
-        let lf = if g.enemy_entering_left > 0 { ((g.enemy_entering_left >> 3) % 5 + 1) as usize } else { 0 };
-        let rf = if g.enemy_entering_right > 0 { ((g.enemy_entering_right >> 3) % 5 + 1) as usize } else { 0 };
-        self.world(&a.enemy_gate_left[lf], 0, WORLD_H / 2 - 10, g);
-        self.world(&a.enemy_gate_right[rf], WORLD_W - 20, WORLD_H / 2 - 10, g);
 
         for o in g.objects.iter().filter(|o| o.active) {
             let s = match o.kind {
@@ -218,6 +197,36 @@ impl Frame {
             }
         }
         self.hud(a, g);
+    }
+
+    /// The border, a five-line pipe, with its corners, the gate and the
+    /// enemy gates, in Mark's pixels.
+    fn border(&mut self, a: &Assets, g: &Game) {
+        const BCOLOR: [usize; 5] = [10, 15, 25, 15, 10];
+        for (i, &bc) in BCOLOR.iter().enumerate() {
+            let i = i as i32 + 1;
+            let c = self.pal[bc];
+            self.hline(10, g.gate_left_x, 10 - i, g, c);
+            self.hline(g.gate_right_x + a.gate_right.w, WORLD_W - 10, 10 - i, g, c);
+            self.hline(10, WORLD_W - 10, WORLD_H - 5 - i, g, c);
+            self.vline(10, WORLD_H - 9, 4 + i, g, c);
+            self.vline(10, WORLD_H - 9, WORLD_W - 11 + i, g, c);
+        }
+        self.world(&a.gate_left, g.gate_left_x, 0, g);
+        self.world(&a.gate_right, g.gate_right_x, 0, g);
+        if !g.gate_open {
+            let c = self.pal[54];
+            self.hline(g.gate_left_x + a.gate_left.w, g.gate_right_x - 1, 7, g, c);
+        }
+        self.world(&a.corner[0], 0, 0, g);
+        self.world(&a.corner[1], WORLD_W - 10, 0, g);
+        self.world(&a.corner[2], WORLD_W - 10, WORLD_H - 10, g);
+        self.world(&a.corner[3], 0, WORLD_H - 10, g);
+
+        let lf = if g.enemy_entering_left > 0 { ((g.enemy_entering_left >> 3) % 5 + 1) as usize } else { 0 };
+        let rf = if g.enemy_entering_right > 0 { ((g.enemy_entering_right >> 3) % 5 + 1) as usize } else { 0 };
+        self.world(&a.enemy_gate_left[lf], 0, WORLD_H / 2 - 10, g);
+        self.world(&a.enemy_gate_right[rf], WORLD_W - 20, WORLD_H / 2 - 10, g);
     }
 
     /// The status bar in the original's font.

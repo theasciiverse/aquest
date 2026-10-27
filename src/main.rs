@@ -4,6 +4,7 @@ mod demo;
 mod frame;
 mod game;
 mod input;
+mod pipes;
 mod save;
 mod starfield;
 #[cfg(test)]
@@ -1151,8 +1152,12 @@ impl App {
         let whole = view::place(area, frame::W, frame::H, v, self.aspect);
         self.set_stars(whole.tw, whole.th);
         let full = self.full_size(area);
+        let hud_h = self.hud_rows(area);
+        let p = view::place(Rect { height: area.height - hud_h, ..area }, frame::W, frame::HUD_Y, v, self.aspect);
+        // line characters for the walls wherever they would be Braille
+        let pipes = !full && view::braille(&p, frame::W, v);
         let Some(g) = &self.game else { return area };
-        self.frame.game(&self.a, g, &self.sf, full);
+        self.frame.game(&self.a, g, &self.sf, full, pipes);
         if let (Some(b), true) = (&self.bonus_view, full) {
             self.frame.bonus_window(&self.a, b);
         }
@@ -1161,9 +1166,10 @@ impl App {
             view::draw(buf, &self.frame, (0, 0, frame::W, frame::H), &whole, v);
             (whole.cells, None)
         } else {
-            let hud_h = self.hud_rows(area);
-            let p = view::place(Rect { height: area.height - hud_h, ..area }, frame::W, frame::HUD_Y, v, self.aspect);
             view::draw(buf, &self.frame, (0, 0, frame::W, frame::HUD_Y), &p, v);
+            if pipes {
+                pipes::draw(buf, &p, v, &self.a, g);
+            }
             (p.cells, Some(p.cells.bottom()))
         };
         self.px_per_cell = (frame::W as f32 / field.width as f32, frame::HUD_Y as f32 / field.height as f32);

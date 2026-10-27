@@ -68,6 +68,7 @@ da200840b1b030ad3693c8062069d1da87d1104b5ca8e160d551b3a934470a58  xquest.fnt
 | `src/input.rs` | keyboard (kitty protocol or repeat-timing), mouse, gamepad to thrust/fire/brake/bomb |
 | `src/demo.rs` | xquest.dmo read/write, `replay` (used by tests and `--verify`) |
 | `src/save.rs` | data folder, xquest.scr Hall of Fame, aquest.cfg settings |
+| `src/pipes.rs` | border, gate and enemy gates as line characters where the picture is Braille |
 | `src/starfield.rs` | the 3-D starfield |
 | `src/main.rs` | menu, play, pause/quit, game over, name entry, Hall of Fame, demos, attract mode |
 
@@ -96,6 +97,15 @@ da200840b1b030ad3693c8062069d1da87d1104b5ca8e160d551b3a934470a58  xquest.fnt
   fit. Mark's pixel status bar, countdown and bonus window only at 1:1
   half blocks (320 columns) in every view (`full_size`): his lettering
   has about five greys a letter and broke up in two-colour cells.
+- Walls in line characters (2026-10-27, David: pipe graphics for the
+  border and where the enemies come out, instead of Braille, to make them
+  crisper): wherever the field is Braille (Braille view, or Mixed below
+  `BLOCKS_FROM`), `pipes.rs` draws the border as one double line a cell
+  (`═ ║ ╔ ╗ ╚ ╝`), the exit gate as posts `╡ ╞` with a red `━` bar while
+  shut, and each enemy gate as a box on the wall (`╠═╗ ║ ║ ╠═╝`), at least
+  three rows tall and two cells deep, green with cyan shading inside while
+  an enemy comes in. The frame then leaves those pixels out
+  (`Frame::game`'s `pipes`). In half blocks Mark's pixels stay.
 - `--shot TICKS --size WxH` prints the built-in demo's frame at that tick
   with colour escapes, no terminal: for comparing views on the same frame
   (scratch `shot.py`-style tools turn it into a PNG).
