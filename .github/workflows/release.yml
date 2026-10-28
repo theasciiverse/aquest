@@ -4,7 +4,7 @@
 # release.source = "github").
 #
 # On the pattern of ASCII Wars!' (same stack: Ratatui, rodio, gilrs). Tags
-# look like v1.0.0-av.1. The game data is compiled in, so the archive is the
+# look like v1.0.0. The game data is compiled in, so the archive is the
 # binary, README.md and LICENSE.
 # Linux builds are glibc, not static musl: sound goes through rodio's ALSA
 # output and gamepads through gilrs and udev, both linked dynamically, so
@@ -17,7 +17,7 @@ name: release
 
 on:
   push:
-    tags: ["*-av.*"]
+    tags: ["v*"]
   workflow_dispatch:
     inputs:
       tag:
