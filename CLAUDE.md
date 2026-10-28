@@ -179,12 +179,12 @@ To be fixed in 1.1.0, xquest-sdl first (`ROADMAP.md`).
   ("tmux 3.6") was removed by hand after recording.
 - Website mockup: NEW! banner in `dev/mock-titles.toml`, cast in
   `casts/aquest.cast`, local Linux x86_64 build in
-  `dev-releases/aquest` (1.0.8-av.1, 2026-10-27; links libasound and
+  `dev-releases/aquest` (1.0.8, 2026-10-27; links libasound and
   libudev). The
   mockup's `local_binary` looks in `games/<id>`, which this folder's
   capitals miss, hence the packaged release.
 - Release workflow `.github/workflows/release.yml`, on ASCII Wars!'
-  pattern. Tag `v1.0.8-av.1` (2026-10-27; earlier v1.0.0, v1.0.2 to v1.0.7) pushed; its run was refused by
+  pattern. Tag `v1.0.8` (2026-10-28; earlier v1.0.0, v1.0.2 to v1.0.7, all renamed from `-av.1` tags) pushed; its run was refused by
   the organisation's Actions billing, so no GitHub release yet (re-run it,
   or `workflow_dispatch` with the tag, once Actions runs again).
 - Repo: private at github.com/theasciiverse/aquest, branch `main`
