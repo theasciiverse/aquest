@@ -158,6 +158,8 @@ Read from xquest.pas, approved by David, done in both:
 
 ## Still different from the 1994 game (found 2026-10-20, not changed)
 
+To be fixed in 1.1.0, xquest-sdl first (`ROADMAP.md`).
+
 - Timid walls: the original kills on walls only when `DiffLevel>1`, so
   Timid bounces; xquest-sdl's `game_tick` bounces on Wimp alone.
 - Power-ups: the original clears them only on a lost life (NewLife);
