@@ -12,6 +12,12 @@ original data, frame for frame with xquest-sdl.
   big terminals
 - [x] Keyboard, mouse and gamepad
 
+## 1.0.9: built
+
+- [x] Gamepads work on Windows: gilrs reads them through XInput, since its
+  default (Windows Gaming Input) only reports to a program with a focused
+  window of its own, which a terminal game never has
+
 ## 1.1.0: as the 1994 game played
 
 The three differences from the original found on 2026-10-20 (see
